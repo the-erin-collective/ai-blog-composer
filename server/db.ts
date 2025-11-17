@@ -1,18 +1,35 @@
 import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { db as sqliteDb, sqlite, runMigrations } from './_core/sqlite';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
 
+// In development, use SQLite
 let _db: ReturnType<typeof drizzle> | null = null;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
+// Initialize the database connection
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try {
-      _db = drizzle(process.env.DATABASE_URL);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
+  if (!_db) {
+    if (process.env.NODE_ENV === 'development' || !process.env.DATABASE_URL) {
+      // Use SQLite in development
+      console.log('[Database] Using SQLite database');
+      _db = sqliteDb;
+      try {
+        await runMigrations();
+      } catch (error) {
+        console.error('Failed to run migrations:', error);
+      }
+    } else {
+      // Use production database if DATABASE_URL is provided
+      console.log('[Database] Using production database');
+      try {
+        const { default: mysql } = await import('mysql2/promise');
+        const connection = await mysql.createConnection(process.env.DATABASE_URL);
+        _db = drizzle(connection);
+      } catch (error) {
+        console.warn("[Database] Failed to connect:", error);
+        _db = null;
+      }
     }
   }
   return _db;

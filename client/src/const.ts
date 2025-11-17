@@ -6,8 +6,19 @@ export const APP_LOGO = "https://placehold.co/128x128/E1E7EF/1F2937?text=App";
 
 // Generate login URL at runtime so redirect URI reflects the current origin.
 export const getLoginUrl = () => {
+  // In development, return a mock login URL that will be handled by the mock auth flow
+  if (import.meta.env.DEV) {
+    return '/login';
+  }
+
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;
+  
+  if (!oauthPortalUrl || !appId) {
+    console.warn('Missing OAuth configuration. Using mock login flow.');
+    return '/login';
+  }
+
   const redirectUri = `${window.location.origin}/api/oauth/callback`;
   const state = btoa(redirectUri);
 

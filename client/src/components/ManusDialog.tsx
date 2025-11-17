@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { APP_LOGO, APP_TITLE } from "@/const";
+import { Button } from './ui/button';
+import { APP_LOGO, APP_TITLE } from '../const';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from './ui/dialog';
 
 interface ManusDialogProps {
   title?: string;

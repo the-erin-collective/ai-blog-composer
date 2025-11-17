@@ -1,26 +1,70 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Alert, AlertDescription } from '../components/ui/alert';
 import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
-import { trpc } from "@/lib/trpc";
 
 export default function NewArticle() {
-  const [, setLocation] = useLocation();
   const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState("");
 
-  const executeMutation = trpc.workflow.execute.useMutation({
-    onSuccess: (data) => {
-      // Navigate to workflow status page with execution ID
-      if (data.executionId) {
-        setLocation(`/workflow/${data.executionId}`);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<Error | null>(null);
+  const [executionId, setExecutionId] = useState<string | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [location, setLocation] = useLocation(); // Make sure this is at the top with other hooks
+
+  const executeWorkflow = async (url: string) => {
+    setIsSubmitting(true);
+    setSubmitError(null);
+    
+    try {
+      const response = await fetch('http://localhost:3000/api/workflow/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          competitorUrl: url,
+          editorId: 'web-interface',
+          model: 'phi4-mini-reasoning', // Default model
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || 'Failed to start workflow');
       }
-    },
-  });
+
+      const data = await response.json();
+      console.log('API Response:', data);
+      if (data.data?.executionId) {
+        const execId = data.data.executionId;
+        console.log('Setting execution ID and showing success');
+        setExecutionId(execId);
+        setShowSuccess(true);
+        
+        // Redirect to workflow status page after a short delay
+        const redirectPath = `/workflow/${execId}`;
+        console.log('Will redirect to:', redirectPath);
+        
+        setTimeout(() => {
+          console.log('Attempting to navigate to:', redirectPath);
+          setLocation(redirectPath);
+        }, 1000);
+      } else {
+        console.error('No execution ID in response:', data);
+      }
+    } catch (error) {
+      console.error('Failed to start workflow:', error);
+      setSubmitError(error instanceof Error ? error : new Error('Failed to start workflow'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const validateUrl = (value: string): boolean => {
     if (!value.trim()) {
@@ -45,7 +89,7 @@ export default function NewArticle() {
       return;
     }
 
-    executeMutation.mutate({ url });
+    executeWorkflow(url);
   };
 
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -77,7 +121,7 @@ export default function NewArticle() {
                 placeholder="https://example.com/article"
                 value={url}
                 onChange={handleUrlChange}
-                disabled={executeMutation.isPending}
+                disabled={isSubmitting}
                 className={urlError ? "border-red-500" : ""}
               />
               {urlError && (
@@ -88,20 +132,21 @@ export default function NewArticle() {
               )}
             </div>
 
-            {executeMutation.error && (
+            {submitError && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  {executeMutation.error.message}
+                  {submitError.message}
                 </AlertDescription>
               </Alert>
             )}
 
-            {executeMutation.isSuccess && (
+            {showSuccess && executionId && (
               <Alert className="border-green-500 text-green-700">
                 <CheckCircle2 className="h-4 w-4" />
                 <AlertDescription>
-                  Pipeline started successfully! Execution ID: {executeMutation.data.executionId}
+                  <p>Pipeline started successfully! Redirecting to workflow status...</p>
+                  <p className="text-xs mt-1">Execution ID: {executionId}</p>
                 </AlertDescription>
               </Alert>
             )}
@@ -109,12 +154,12 @@ export default function NewArticle() {
             <Button
               type="submit"
               className="w-full"
-              disabled={executeMutation.isPending}
+              disabled={isSubmitting}
             >
-              {executeMutation.isPending ? (
+              {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Starting Pipeline...
+                  Processing...
                 </>
               ) : (
                 "Start Pipeline"

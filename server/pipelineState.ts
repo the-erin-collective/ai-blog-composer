@@ -1,7 +1,208 @@
-import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { InsertPipelineExecution, pipelineExecutions, PipelineExecution } from "../drizzle/schema";
-import { getDb } from "./db";
+
+// In-memory store for pipeline executions
+const pipelineStore = new Map<string, any>();
+
+// Event emitter for state changes
+type StateChangeHandler = (executionId: string, state: any) => void;
+const stateChangeHandlers = new Set<StateChangeHandler>();
+
+/**
+ * Pipeline execution status type.
+ */
+type PipelineStatus = 'pending' | 'running' | 'suspended' | 'completed' | 'failed' | 'rejected';
+
+/**
+ * Suspension metadata when workflow is paused at human gates.
+ */
+interface SuspensionData {
+  suspendedAt: string;
+  reason: string;
+  stepId: string;
+  data: Record<string, any>;
+}
+
+/**
+ * Pipeline execution interface.
+ */
+interface PipelineExecution {
+  executionId: string;
+  competitorUrl: string;
+  editorId: string;
+  status: PipelineStatus;
+  context: any;
+  suspension?: SuspensionData;
+  metrics: any;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const pipelineState = {
+  // Store operations
+  store: pipelineStore,
+  
+  /**
+   * Create a new pipeline execution in memory.
+   */
+  async createPipelineExecution(input: { competitorUrl: string; editorId: string }): Promise<PipelineExecution> {
+    const now = new Date().toISOString();
+    const execution: PipelineExecution = {
+      executionId: input.competitorUrl, // Using URL as ID for simplicity
+      competitorUrl: input.competitorUrl,
+      editorId: input.editorId,
+      status: 'pending',
+      context: {},
+      metrics: {
+        startedAt: now,
+        auditLog: []
+      },
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    pipelineStore.set(execution.executionId, execution);
+    this.notifyStateChange(execution.executionId, execution);
+    return execution;
+  },
+  
+  /**
+   * Update an existing pipeline execution.
+   */
+  async updatePipelineExecution(
+    executionId: string,
+    updates: Partial<Omit<PipelineExecution, 'executionId' | 'createdAt'>>
+  ): Promise<PipelineExecution> {
+    const execution = pipelineStore.get(executionId);
+    if (!execution) {
+      throw new Error(`Execution ${executionId} not found`);
+    }
+    
+    const updatedExecution = {
+      ...execution,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+    
+    pipelineStore.set(executionId, updatedExecution);
+    this.notifyStateChange(executionId, updatedExecution);
+    return updatedExecution;
+  },
+  
+  /**
+   * Get a pipeline execution by ID.
+   */
+  async getPipelineExecution(executionId: string): Promise<PipelineExecution | undefined> {
+    return pipelineStore.get(executionId);
+  },
+  
+  /**
+   * Save suspension state for a pipeline execution.
+   */
+  async saveSuspensionState(
+    executionId: string,
+    reason: string,
+    stepId: string,
+    data: Record<string, any>
+  ): Promise<PipelineExecution> {
+    const suspension: SuspensionData = {
+      suspendedAt: new Date().toISOString(),
+      reason,
+      stepId,
+      data
+    };
+    
+    return this.updatePipelineExecution(executionId, {
+      status: 'suspended',
+      suspension
+    });
+  },
+  
+  /**
+   * Clear suspension state and resume a pipeline execution.
+   */
+  async clearSuspensionState(
+    executionId: string,
+    resumeData: Record<string, any> = {}
+  ): Promise<PipelineExecution> {
+    const execution = await this.getPipelineExecution(executionId);
+    if (!execution) {
+      throw new Error(`Execution ${executionId} not found`);
+    }
+    
+    if (execution.status !== 'suspended') {
+      throw new Error(`Execution ${executionId} is not suspended`);
+    }
+    
+    // Add resume data to context
+    const context = {
+      ...execution.context,
+      resumeData: {
+        ...execution.context.resumeData,
+        [execution.suspension?.stepId || 'unknown']: {
+          resumedAt: new Date().toISOString(),
+          ...resumeData
+        }
+      }
+    };
+    
+    return this.updatePipelineExecution(executionId, {
+      status: 'running',
+      context,
+      suspension: undefined
+    });
+  },
+  
+  /**
+   * Add an audit log entry to a pipeline execution.
+   */
+  async addAuditLogEntry(
+    executionId: string,
+    event: string,
+    stepId: string,
+    data: Record<string, any> = {}
+  ): Promise<void> {
+    const execution = await this.getPipelineExecution(executionId);
+    if (!execution) return;
+    
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      event,
+      stepId,
+      data
+    };
+    
+    const metrics = {
+      ...execution.metrics,
+      auditLog: [...(execution.metrics?.auditLog || []), logEntry]
+    };
+    
+    await this.updatePipelineExecution(executionId, { metrics });
+  },
+  
+  // Event handling
+  
+  /**
+   * Subscribe to pipeline state changes
+   * @param handler - Function to call when state changes
+   * @returns Unsubscribe function
+   */
+  onStateChange(handler: StateChangeHandler): () => void {
+    stateChangeHandlers.add(handler);
+    return () => stateChangeHandlers.delete(handler);
+  },
+  
+  /**
+   * Notify subscribers of a state change
+   */
+  notifyStateChange(executionId: string, state: any) {
+    stateChangeHandlers.forEach(handler => handler(executionId, state));
+  }
+};
+
+// These interfaces are now defined at the top of the file
+  createdAt: string;
+  updatedAt: string;
+}
 
 /**
  * Input data for creating a new pipeline execution.
@@ -84,177 +285,92 @@ export interface PipelineMetrics {
 export type PipelineStatus = "running" | "suspended" | "completed" | "rejected" | "failed";
 
 /**
- * Create a new pipeline execution in the database.
- * 
- * @param input - The input data for the pipeline (competitorUrl, editorId)
- * @returns The created pipeline execution with generated executionId
- * @throws Error if database is not available or insertion fails
- * 
- * Requirements: 1.3, 10.2
+ * Create a new pipeline execution in memory.
  */
 export async function createPipelineExecution(input: PipelineInput): Promise<PipelineExecution> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
-  }
-
   const executionId = nanoid();
   const now = new Date().toISOString();
 
-  const metrics: PipelineMetrics = {
-    startedAt: now,
-    auditLog: [
-      {
-        timestamp: now,
-        event: "PIPELINE_INITIALIZED",
-        stepId: "init",
-        data: { input },
-      },
-    ],
-  };
-
-  const values: InsertPipelineExecution = {
+  const newExecution: PipelineExecution = {
     executionId,
-    status: "running",
-    input: JSON.stringify(input),
-    context: JSON.stringify({}),
-    metrics: JSON.stringify(metrics),
+    competitorUrl: input.competitorUrl,
+    editorId: input.editorId,
+    status: 'pending',
+    context: {},
+    metrics: {
+      startedAt: now,
+      auditLog: [
+        {
+          timestamp: now,
+          event: 'pipeline_created',
+          stepId: 'start',
+          data: { url: input.competitorUrl }
+        }
+      ]
+    },
+    createdAt: now,
+    updatedAt: now
   };
 
-  try {
-    await db.insert(pipelineExecutions).values(values);
-
-    // Retrieve the created execution
-    const result = await db
-      .select()
-      .from(pipelineExecutions)
-      .where(eq(pipelineExecutions.executionId, executionId))
-      .limit(1);
-
-    if (result.length === 0) {
-      throw new Error("Failed to retrieve created execution");
-    }
-
-    return result[0];
-  } catch (error) {
-    console.error("[PipelineState] Failed to create execution:", error);
-    throw error;
-  }
+  pipelineStore.set(executionId, { ...newExecution });
+  console.log(`[In-Memory DB] Created execution ${executionId} for URL: ${input.competitorUrl}`);
+  return newExecution;
 }
 
 /**
- * Update an existing pipeline execution state.
- * 
- * @param executionId - The unique execution identifier
- * @param updates - Partial updates to apply to the execution
- * @returns The updated pipeline execution
- * @throws Error if database is not available, execution not found, or update fails
- * 
- * Requirements: 1.3, 10.2
+ * Update an existing pipeline execution state in memory.
  */
 export async function updatePipelineExecution(
   executionId: string,
   updates: {
-    status?: PipelineStatus;
-    context?: PipelineContext;
-    suspension?: SuspensionData | null;
-    metrics?: PipelineMetrics;
+    status?: string;
+    context?: any;
+    suspension?: any;
+    metrics?: any;
   }
 ): Promise<PipelineExecution> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
+  const execution = pipelineStore.get(executionId);
+  if (!execution) {
+    throw new Error(`Pipeline execution ${executionId} not found`);
   }
 
-  try {
-    // First, retrieve the current execution to merge updates
-    const current = await getPipelineExecution(executionId);
-    if (!current) {
-      throw new Error(`Execution not found: ${executionId}`);
+  const now = new Date().toISOString();
+  // Handle metrics merging safely
+  const currentMetrics = execution.metrics && typeof execution.metrics === 'string'
+    ? JSON.parse(execution.metrics)
+    : execution.metrics || {};
+    
+  const updatedMetrics = updates.metrics || {};
+
+  const updatedExecution = {
+    ...execution,
+    ...updates,
+    updatedAt: now,
+    context: {
+      ...(execution.context || {}),
+      ...(updates.context || {})
+    },
+    metrics: {
+      ...currentMetrics,
+      ...(typeof updatedMetrics === 'object' ? updatedMetrics : {})
     }
+  };
 
-    // Prepare update values
-    const updateValues: Partial<InsertPipelineExecution> = {};
-
-    if (updates.status !== undefined) {
-      updateValues.status = updates.status;
-    }
-
-    if (updates.context !== undefined) {
-      // Merge with existing context
-      const existingContext = current.context ? JSON.parse(current.context) : {};
-      const mergedContext = { ...existingContext, ...updates.context };
-      updateValues.context = JSON.stringify(mergedContext);
-    }
-
-    if (updates.suspension !== undefined) {
-      updateValues.suspension = updates.suspension ? JSON.stringify(updates.suspension) : null;
-    }
-
-    if (updates.metrics !== undefined) {
-      // Merge with existing metrics
-      const existingMetrics = current.metrics ? JSON.parse(current.metrics) : {};
-      const mergedMetrics = { ...existingMetrics, ...updates.metrics };
-      
-      // Merge audit logs if present
-      if (updates.metrics.auditLog && existingMetrics.auditLog) {
-        mergedMetrics.auditLog = [...existingMetrics.auditLog, ...updates.metrics.auditLog];
-      }
-      
-      updateValues.metrics = JSON.stringify(mergedMetrics);
-    }
-
-    // Perform the update
-    await db
-      .update(pipelineExecutions)
-      .set(updateValues)
-      .where(eq(pipelineExecutions.executionId, executionId));
-
-    // Retrieve and return the updated execution
-    const result = await db
-      .select()
-      .from(pipelineExecutions)
-      .where(eq(pipelineExecutions.executionId, executionId))
-      .limit(1);
-
-    if (result.length === 0) {
-      throw new Error("Failed to retrieve updated execution");
-    }
-
-    return result[0];
-  } catch (error) {
-    console.error("[PipelineState] Failed to update execution:", error);
-    throw error;
-  }
+  pipelineStore.set(executionId, updatedExecution);
+  console.log(`[In-Memory DB] Updated execution ${executionId} with`, updates);
+  return updatedExecution;
 }
 
 /**
- * Retrieve a pipeline execution by its execution ID.
- * 
- * @param executionId - The unique execution identifier
- * @returns The pipeline execution or undefined if not found
- * @throws Error if database is not available or query fails
- * 
- * Requirements: 1.3, 10.2
+ * Retrieve a pipeline execution by its execution ID from memory.
  */
 export async function getPipelineExecution(executionId: string): Promise<PipelineExecution | undefined> {
-  const db = await getDb();
-  if (!db) {
-    throw new Error("Database not available");
+  const execution = pipelineStore.get(executionId);
+  if (!execution) {
+    console.log(`[In-Memory DB] Execution ${executionId} not found`);
+    return undefined;
   }
-
-  try {
-    const result = await db
-      .select()
-      .from(pipelineExecutions)
-      .where(eq(pipelineExecutions.executionId, executionId))
-      .limit(1);
-
-    return result.length > 0 ? result[0] : undefined;
-  } catch (error) {
-    console.error("[PipelineState] Failed to retrieve execution:", error);
-    throw error;
-  }
+  return { ...execution };
 }
 
 /**
@@ -276,7 +392,10 @@ export async function addAuditLogEntry(
     throw new Error(`Execution not found: ${executionId}`);
   }
 
-  const existingMetrics = execution.metrics ? JSON.parse(execution.metrics) : {};
+  // Handle both string and object metrics
+  const existingMetrics = execution.metrics && typeof execution.metrics === 'string' 
+    ? JSON.parse(execution.metrics) 
+    : execution.metrics || {};
   const auditLog = existingMetrics.auditLog || [];
 
   auditLog.push({
@@ -286,11 +405,14 @@ export async function addAuditLogEntry(
     data,
   });
 
+  // Ensure we don't stringify the metrics object if it's already a string
+  const updatedMetrics = {
+    ...existingMetrics,
+    auditLog,
+  };
+
   await updatePipelineExecution(executionId, {
-    metrics: {
-      ...existingMetrics,
-      auditLog,
-    },
+    metrics: updatedMetrics,
   });
 }
 

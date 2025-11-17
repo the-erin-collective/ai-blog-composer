@@ -1,7 +1,7 @@
-import { useAuth } from "@/_core/hooks/useAuth";
-import { Button } from "@/components/ui/button";
+import { useAuth } from '../_core/hooks/useAuth';
+import { Button } from '../components/ui/button';
 import { Loader2, FileText } from "lucide-react";
-import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
+import { APP_LOGO, APP_TITLE, getLoginUrl } from '../const';
 import { Streamdown } from 'streamdown';
 import { Link } from "wouter";
 

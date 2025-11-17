@@ -45,6 +45,23 @@ export class OllamaClient {
   /**
    * Send a message to the Ollama model and get a response
    */
+  /**
+   * Check if the Ollama server is running and the model is available
+   */
+  async checkHealth(): Promise<boolean> {
+    try {
+      const response = await this.client.get('/api/tags');
+      const models = response.data?.models || [];
+      return models.some((m: any) => m.name === this.config.model);
+    } catch (error) {
+      console.error('[Ollama] Health check failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Send a message to the Ollama model and get a response
+   */
   async chat(messages: OllamaMessage[]): Promise<string> {
     try {
       const response = await this.client.post<OllamaResponse>('/api/chat', {

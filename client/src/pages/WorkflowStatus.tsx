@@ -1,15 +1,14 @@
 import { useState, useEffect } from "react";
 import { useLocation, useParams } from "wouter";
-import { trpc } from "@/lib/trpc";
-import { Button } from "@/components/ui/button";
+import { Button } from "../components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+} from "../components/ui/card";
+import { Alert, AlertDescription } from "../components/ui/alert";
 import {
   Loader2,
   AlertCircle,
@@ -19,43 +18,107 @@ import {
   X,
   MessageSquare,
 } from "lucide-react";
-import { Textarea } from "@/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "../components/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "../components/ui/radio-group";
+import { Label } from "../components/ui/label";
 
 export default function WorkflowStatus() {
   const [location, setLocation] = useLocation();
   const { executionId } = useParams<{ executionId: string }>();
-  const utils = trpc.useUtils();
-
+  // State for execution data and loading state
+  const [execution, setExecution] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
   // State for approval UI
-  const [approvalDecision, setApprovalDecision] = useState<
-    "approve" | "reject"
-  >("approve");
+  const [approvalDecision, setApprovalDecision] = useState<"approve" | "reject">("approve");
   const [comments, setComments] = useState("");
   const [showComments, setShowComments] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Query to get execution state
-  const executionQuery = trpc.workflow.getExecutionState.useQuery(
-    { executionId: executionId! },
-    {
-      enabled: !!executionId,
-      refetchInterval: 3000, // Poll every 3 seconds
-      refetchIntervalInBackground: true,
-    }
-  );
-
-  // Mutation to resume workflow
-  const resumeMutation = trpc.workflow.resume.useMutation({
-    onSuccess: () => {
-      // Invalidate and refetch the execution state
-      utils.workflow.getExecutionState.invalidate({ executionId });
+  // Handle resuming a workflow
+  const handleResumeWorkflow = async (gate: 'concepts' | 'draft') => {
+    if (!executionId) return;
+    
+    setIsSubmitting(true);
+    setSubmitError(null);
+    
+    try {
+      const response = await fetch(`http://localhost:3000/api/workflow/executions/${executionId}/resume`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          gate,
+          approved: approvalDecision === 'approve',
+          comments: showComments ? comments : undefined,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || 'Failed to resume workflow');
+      }
+      
       // Reset form state
-      setApprovalDecision("approve");
-      setComments("");
+      setApprovalDecision('approve');
+      setComments('');
       setShowComments(false);
-    },
-  });
+      
+      // Refresh the execution state
+      await fetchExecutionState();
+    } catch (err) {
+      console.error('Failed to resume workflow:', err);
+      setSubmitError(err instanceof Error ? err.message : 'Failed to resume workflow');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle approval submission
+  const handleApprovalSubmit = (gate: 'concepts' | 'draft') => {
+    handleResumeWorkflow(gate);
+  };
+
+  // Fetch execution state
+  const fetchExecutionState = async () => {
+    if (!executionId) return;
+    
+    try {
+      setIsLoading(true);
+      const response = await fetch(`http://localhost:3000/api/workflow/executions/${executionId}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || 'Failed to fetch execution state');
+      }
+      
+      const data = await response.json();
+      setExecution(data.data);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to fetch execution state:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch execution state');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Set up polling
+  useEffect(() => {
+    if (!executionId) return;
+    
+    // Initial fetch
+    fetchExecutionState();
+    
+    // Set up interval for polling
+    const intervalId = setInterval(fetchExecutionState, 3000);
+    
+    // Clean up interval on unmount
+    return () => clearInterval(intervalId);
+  }, [executionId]);
 
   // Handle back to new article
   const handleBackToNewArticle = () => {
@@ -67,21 +130,9 @@ export default function WorkflowStatus() {
     setLocation("/new-article");
   };
 
-  // Handle approval submission
-  const handleApprovalSubmit = (gate: "concepts" | "draft") => {
-    resumeMutation.mutate({
-      executionId,
-      resumeData: {
-        gate,
-        approved: approvalDecision === "approve",
-        comments: showComments ? comments : undefined,
-      },
-    });
-  };
-
   // Determine current status and render appropriate UI
   const renderStatusContent = () => {
-    if (executionQuery.isLoading) {
+    if (isLoading) {
       return (
         <div className="text-center py-8">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
@@ -90,18 +141,27 @@ export default function WorkflowStatus() {
       );
     }
 
-    if (executionQuery.isError) {
+    if (error) {
       return (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            Failed to load workflow status: {executionQuery.error.message}
+            Failed to load workflow status: {error}
           </AlertDescription>
         </Alert>
       );
     }
 
-    const execution = executionQuery.data;
+    if (!execution) {
+      return (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Workflow execution not found
+          </AlertDescription>
+        </Alert>
+      );
+    }
     if (!execution) {
       return (
         <Alert variant="destructive">
@@ -185,23 +245,28 @@ export default function WorkflowStatus() {
           <Card>
             <CardHeader>
               <CardTitle className="text-xl">
-                {suspension.stepId === "concepts"
+                {suspension.stepId === "concepts" || suspension.stepId === "gate-concept-approval"
                   ? "Concept Approval"
                   : "Draft Approval"}
               </CardTitle>
               <CardDescription>
                 Please review and approve or reject the{" "}
-                {suspension.stepId === "concepts" ? "concepts" : "draft"} below.
+                {suspension.stepId === "concepts" || suspension.stepId === "gate-concept-approval" 
+                  ? "concepts" 
+                  : "draft"} below.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Display extracted concepts or draft content */}
-              {suspension.stepId === "concepts" &&
+              {(suspension.stepId === "concepts" || suspension.stepId === "gate-concept-approval") &&
                 suspension.data?.concepts && (
                   <div>
+                    {suspension.data.metadata?.title && (
+                      <h3 className="text-lg font-medium mb-2">{suspension.data.metadata.title}</h3>
+                    )}
                     <h4 className="font-semibold mb-2">Extracted Concepts:</h4>
                     <div className="bg-gray-50 p-4 rounded-lg">
-                      {Array.isArray(suspension.data.concepts) ? (
+                      {Array.isArray(suspension.data.concepts) && suspension.data.concepts.length > 0 ? (
                         <ul className="list-disc list-inside space-y-1">
                           {suspension.data.concepts.map(
                             (concept: string, index: number) => (
@@ -212,7 +277,7 @@ export default function WorkflowStatus() {
                           )}
                         </ul>
                       ) : (
-                        <p className="text-sm">{suspension.data.concepts}</p>
+                        <p className="text-sm text-gray-500">No concepts were extracted from this content.</p>
                       )}
                     </div>
                   </div>
@@ -283,27 +348,42 @@ export default function WorkflowStatus() {
               {/* Action Buttons */}
               <div className="flex space-x-4">
                 <Button
-                  onClick={() =>
-                    handleApprovalSubmit(
-                      suspension.stepId === "concepts" ? "concepts" : "draft"
-                    )
-                  }
-                  disabled={resumeMutation.isPending}
+                  onClick={() => handleApprovalSubmit(
+                    (suspension.stepId === "concepts" || suspension.stepId === "gate-concept-approval") ? "concepts" : "draft"
+                  )}
+                  disabled={isSubmitting}
                   className="flex items-center space-x-2"
                 >
-                  {resumeMutation.isPending ? (
+                  {isSubmitting ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
                       <span>Processing...</span>
                     </>
                   ) : (
                     <>
-                      <Play className="h-4 w-4" />
-                      <span>Resume Workflow</span>
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>Submit Approval</span>
                     </>
                   )}
                 </Button>
+                
+                <Button
+                  variant="outline"
+                  onClick={handleBackToNewArticle}
+                  disabled={isSubmitting}
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Cancel
+                </Button>
               </div>
+              
+              {/* Show any submission errors */}
+              {submitError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{submitError}</AlertDescription>
+                </Alert>
+              )}
             </CardContent>
           </Card>
         )}
@@ -341,15 +421,19 @@ export default function WorkflowStatus() {
         )}
 
         {/* Navigation Actions */}
-        <div className="flex space-x-4">
+        <div className="flex space-x-4 mt-6">
           <Button
             onClick={handleStartNewWorkflow}
             className="flex items-center space-x-2"
+            variant="outline"
           >
             <Play className="h-4 w-4" />
             <span>Start New Workflow</span>
           </Button>
-          <Button variant="outline" onClick={handleBackToNewArticle}>
+          <Button 
+            variant="ghost" 
+            onClick={handleBackToNewArticle}
+          >
             Back to New Article
           </Button>
         </div>
@@ -359,7 +443,15 @@ export default function WorkflowStatus() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-4xl mx-auto">{renderStatusContent()}</div>
+      <div className="max-w-4xl mx-auto">
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {renderStatusContent()}
+      </div>
     </div>
   );
 }
