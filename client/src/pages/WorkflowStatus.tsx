@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { Button } from "../components/ui/button";
 import {
@@ -21,14 +21,11 @@ import {
 import { Textarea } from "../components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "../components/ui/radio-group";
 import { Label } from "../components/ui/label";
+import { useWorkflowWebSocket } from "../hooks/useWorkflowWebSocket";
 
 export default function WorkflowStatus() {
   const [location, setLocation] = useLocation();
   const { executionId } = useParams<{ executionId: string }>();
-  // State for execution data and loading state
-  const [execution, setExecution] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   
   // State for approval UI
   const [approvalDecision, setApprovalDecision] = useState<"approve" | "reject">("approve");
@@ -36,89 +33,37 @@ export default function WorkflowStatus() {
   const [showComments, setShowComments] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  
+  // Use WebSocket hook for real-time updates
+  const {
+    execution,
+    isLoading,
+    error,
+    handleResumeWorkflow: resumeWorkflow,
+  } = useWorkflowWebSocket(executionId || '');
 
-  // Handle resuming a workflow
-  const handleResumeWorkflow = async (gate: 'concepts' | 'draft') => {
+  // Handle approval submission with loading state
+  const handleApprovalSubmit = async (gate: 'concepts' | 'draft') => {
     if (!executionId) return;
     
     setIsSubmitting(true);
     setSubmitError(null);
     
-    try {
-      const response = await fetch(`http://localhost:3000/api/workflow/executions/${executionId}/resume`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          gate,
-          approved: approvalDecision === 'approve',
-          comments: showComments ? comments : undefined,
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || 'Failed to resume workflow');
-      }
-      
-      // Reset form state
+    const success = await resumeWorkflow(
+      gate,
+      approvalDecision === 'approve',
+      showComments ? comments : undefined
+    );
+    
+    if (success) {
+      // Reset form state on success
       setApprovalDecision('approve');
       setComments('');
       setShowComments(false);
-      
-      // Refresh the execution state
-      await fetchExecutionState();
-    } catch (err) {
-      console.error('Failed to resume workflow:', err);
-      setSubmitError(err instanceof Error ? err.message : 'Failed to resume workflow');
-    } finally {
-      setIsSubmitting(false);
     }
+    
+    setIsSubmitting(false);
   };
-
-  // Handle approval submission
-  const handleApprovalSubmit = (gate: 'concepts' | 'draft') => {
-    handleResumeWorkflow(gate);
-  };
-
-  // Fetch execution state
-  const fetchExecutionState = async () => {
-    if (!executionId) return;
-    
-    try {
-      setIsLoading(true);
-      const response = await fetch(`http://localhost:3000/api/workflow/executions/${executionId}`);
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || 'Failed to fetch execution state');
-      }
-      
-      const data = await response.json();
-      setExecution(data.data);
-      setError(null);
-    } catch (err) {
-      console.error('Failed to fetch execution state:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch execution state');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Set up polling
-  useEffect(() => {
-    if (!executionId) return;
-    
-    // Initial fetch
-    fetchExecutionState();
-    
-    // Set up interval for polling
-    const intervalId = setInterval(fetchExecutionState, 3000);
-    
-    // Clean up interval on unmount
-    return () => clearInterval(intervalId);
-  }, [executionId]);
 
   // Handle back to new article
   const handleBackToNewArticle = () => {

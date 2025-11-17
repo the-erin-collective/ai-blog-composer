@@ -1,34 +1,29 @@
 type MessageHandler = (data: any) => void;
 
-export class WebSocketService {
-  private socket: WebSocket | null = null;
+class WebSocketService {
+  private ws: WebSocket | null = null;
   private messageHandlers = new Set<MessageHandler>();
+  private eventListeners: Record<string, Function[]> = {};
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
-  private reconnectDelay = 3000; // 3 seconds
-  private url: string;
-  private shouldReconnect = true;
+  private reconnectDelay = 1000;
+  private connectionUrl: string | null = null;
 
-  constructor() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    this.url = `${protocol}//${host}/ws`;
-    this.connect();
-  }
-
-  private connect() {
-    if (this.socket) {
+  connect(url: string) {
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
-    this.socket = new WebSocket(this.url);
+    this.connectionUrl = url;
+    this.ws = new WebSocket(url);
 
-    this.socket.onopen = () => {
+    this.ws.onopen = () => {
       console.log('WebSocket connected');
-      this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+      this.reconnectAttempts = 0;
+      this.emit('connect');
     };
 
-    this.socket.onmessage = (event) => {
+    this.ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         this.messageHandlers.forEach(handler => handler(data));
@@ -37,19 +32,28 @@ export class WebSocketService {
       }
     };
 
-    this.socket.onclose = () => {
-      console.log('WebSocket disconnected');
-      this.socket = null;
-      
-      if (this.shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
-        this.reconnectAttempts++;
-        console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-        setTimeout(() => this.connect(), this.reconnectDelay);
-      }
+    this.ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      this.emit('error', error);
     };
 
-    this.socket.onerror = (error) => {
-      console.error('WebSocket error:', error);
+    this.ws.onclose = () => {
+      console.log('WebSocket disconnected');
+      this.emit('disconnect');
+      
+      if (this.reconnectAttempts < this.maxReconnectAttempts) {
+        const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts);
+        console.log(`Attempting to reconnect in ${delay}ms...`);
+        
+        setTimeout(() => {
+          this.reconnectAttempts++;
+          if (this.connectionUrl) {
+            this.connect(this.connectionUrl);
+          }
+        }, delay);
+      } else {
+        console.error('Max reconnection attempts reached');
+      }
     };
   }
 
@@ -58,20 +62,33 @@ export class WebSocketService {
     return () => this.messageHandlers.delete(handler);
   }
 
-  close() {
-    this.shouldReconnect = false;
-    if (this.socket) {
-      this.socket.close();
+  addEventListener(event: string, handler: Function): void {
+    if (!this.eventListeners[event]) {
+      this.eventListeners[event] = [];
     }
+    this.eventListeners[event].push(handler);
+  }
+
+  removeEventListener(event: string, handler: Function): void {
+    if (!this.eventListeners[event]) return;
+    this.eventListeners[event] = this.eventListeners[event].filter(h => h !== handler);
+  }
+
+  private emit(event: string, ...args: any[]) {
+    if (!this.eventListeners[event]) return;
+    this.eventListeners[event].forEach(handler => handler(...args));
+  }
+
+  close() {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+  }
+
+  getConnectionCount(): number {
+    return this.messageHandlers.size;
   }
 }
 
-// Create a singleton instance
 export const webSocketService = new WebSocketService();
-
-// Ensure WebSocket connection is properly cleaned up when the page is unloaded
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
-    webSocketService.close();
-  });
-}

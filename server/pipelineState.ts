@@ -7,32 +7,80 @@ const pipelineStore = new Map<string, any>();
 type StateChangeHandler = (executionId: string, state: any) => void;
 const stateChangeHandlers = new Set<StateChangeHandler>();
 
-/**
- * Pipeline execution status type.
- */
-type PipelineStatus = 'pending' | 'running' | 'suspended' | 'completed' | 'failed' | 'rejected';
+export type PipelineStatus = 'pending' | 'running' | 'suspended' | 'completed' | 'failed' | 'rejected';
 
-/**
- * Suspension metadata when workflow is paused at human gates.
- */
-interface SuspensionData {
+export interface SuspensionData {
   suspendedAt: string;
   reason: string;
   stepId: string;
   data: Record<string, any>;
 }
 
-/**
- * Pipeline execution interface.
- */
-interface PipelineExecution {
+export interface PipelineMetrics {
+  startedAt: string;
+  completedAt?: string;
+  totalCost?: number;
+  tokenUsage?: {
+    summarizer?: number;
+    outline?: number;
+    draft?: number;
+    reviewer?: number;
+  };
+  auditLog?: Array<{
+    timestamp: string;
+    event: string;
+    stepId: string;
+    data: Record<string, any>;
+  }>;
+}
+
+export interface PipelineContext {
+  metadata?: {
+    title: string;
+    metaDescription: string;
+    headings: {
+      h1: string[];
+      h2: string[];
+      h3: string[];
+    };
+    extractedAt: string;
+  };
+  concepts?: string[];
+  outline?: {
+    title: string;
+    introduction: string[];
+    sections: Array<{
+      heading: string;
+      keyPoints: string[];
+    }>;
+    conclusion: string[];
+  };
+  draft?: {
+    title: string;
+    metaDescription: string;
+    bodyParagraphs: string[];
+    wordCount: number;
+  };
+  reviewScore?: number;
+  distinctivenessScore?: number;
+  revisionCount?: number;
+  html?: string;
+  [key: string]: any;
+}
+
+export interface PipelineInput {
+  competitorUrl: string;
+  editorId: string;
+}
+
+export interface PipelineExecution {
   executionId: string;
   competitorUrl: string;
   editorId: string;
   status: PipelineStatus;
-  context: any;
+  context: PipelineContext;
   suspension?: SuspensionData;
-  metrics: any;
+  metrics: PipelineMetrics;
   createdAt: string;
   updatedAt: string;
 }
@@ -199,22 +247,13 @@ export const pipelineState = {
   }
 };
 
-// These interfaces are now defined at the top of the file
-  createdAt: string;
-  updatedAt: string;
-}
-
-/**
- * Input data for creating a new pipeline execution.
- */
+// Input data for creating a new pipeline execution
 export interface PipelineInput {
   competitorUrl: string;
   editorId: string;
 }
 
-/**
- * Workflow execution context containing intermediate results.
- */
+// Workflow execution context containing intermediate results
 export interface PipelineContext {
   metadata?: {
     title: string;

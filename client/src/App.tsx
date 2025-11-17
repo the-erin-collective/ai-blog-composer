@@ -21,7 +21,7 @@ function Home() {
   useEffect(() => {
     const fetchModels = async () => {
       try {
-        const response = await fetch('http://localhost:3000/api/models');
+        const response = await fetch('/api/models');
         if (!response.ok) {
           throw new Error('Failed to fetch models');
         }
@@ -68,7 +68,7 @@ function Home() {
         editorId: 'web-interface' 
       });
       
-      const response = await fetch('http://localhost:3000/api/workflow/start', {
+      const response = await fetch('/api/workflow/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
