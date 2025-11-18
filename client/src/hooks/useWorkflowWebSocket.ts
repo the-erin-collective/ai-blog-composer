@@ -114,11 +114,15 @@ export function useWorkflowWebSocket(executionId: string) {
         }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || 'Failed to update workflow');
+        throw new Error(data.error?.message || 'Failed to update workflow');
       }
 
+      // Log success for debugging
+      console.log('Workflow resume response:', data);
+      
       return true;
     } catch (err) {
       console.error('Failed to update workflow:', err);

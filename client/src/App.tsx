@@ -1,6 +1,7 @@
 import { Route, Switch, useLocation } from 'wouter';
 import React, { useEffect, useState } from 'react';
 import WorkflowStatus from './pages/WorkflowStatus';
+import NewArticle from './pages/NewArticle';
 
 interface Model {
   name: string;
@@ -10,39 +11,116 @@ interface Model {
 // Home component with URL input and submit button
 function Home() {
   const [url, setUrl] = useState('');
-  const [selectedModel, setSelectedModel] = useState('phi4-mini-reasoning');
+  const [providers] = useState([
+    { id: 'ollama', name: 'Ollama (Local)' },
+    { id: 'openrouter', name: 'OpenRouter' }
+  ]);
+  const [selectedProvider, setSelectedProvider] = useState('ollama');
+  const [apiKey, setApiKey] = useState("");
   const [availableModels, setAvailableModels] = useState<Model[]>([]);
+  const [selectedModel, setSelectedModel] = useState('phi4-mini-reasoning');
   const [isLoadingModels, setIsLoadingModels] = useState(true);
+  const [isModelsLoading, setIsModelsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState('');
   const [, setLocation] = useLocation();
 
-  // Load available models on component mount
+  // Fetch available models based on selected provider
   useEffect(() => {
     const fetchModels = async () => {
       try {
-        const response = await fetch('/api/models');
-        if (!response.ok) {
-          throw new Error('Failed to fetch models');
-        }
-        const data = await response.json();
-        setAvailableModels(data.models || []);
+        setIsModelsLoading(true);
         
-        // Set default model if available
-        if (data.models && data.models.length > 0) {
-          const defaultModel = data.models.find((m: Model) => m.model === 'phi4-mini-reasoning') || data.models[0];
-          setSelectedModel(defaultModel.model);
+        if (selectedProvider === 'ollama') {
+          // Fetch Ollama models
+          const response = await fetch('/api/workflow/models');
+          
+          if (!response.ok) {
+            throw new Error('Failed to fetch Ollama models');
+          }
+          
+          const data = await response.json();
+          if (data.success && data.data?.models) {
+            setAvailableModels(data.data.models.map((model: string) => ({ name: model, model })));
+            // Set default model if it exists in the list
+            if (data.data.models.includes('phi4-mini-reasoning')) {
+              setSelectedModel('phi4-mini-reasoning');
+            } else if (data.data.models.length > 0) {
+              setSelectedModel(data.data.models[0]);
+            }
+          }
+        } else if (selectedProvider === 'openrouter') {
+          // For OpenRouter, we'll set a default list and let the backend fetch the actual models
+          // when the user provides an API key
+          setAvailableModels([]);
+          setSelectedModel("");
         }
       } catch (error) {
-        console.error('Error fetching models:', error);
-        setResult('Warning: Could not load models. Using default model.');
+        console.error('Failed to fetch models:', error);
+        // Fallback to default model list for Ollama
+        if (selectedProvider === 'ollama') {
+          setAvailableModels([
+            { name: 'phi4-mini-reasoning', model: 'phi4-mini-reasoning' },
+            { name: 'gemma3:270m', model: 'gemma3:270m' },
+            { name: 'llama2', model: 'llama2' },
+            { name: 'mistral', model: 'mistral' }
+          ]);
+          setSelectedModel('phi4-mini-reasoning');
+        } else {
+          setAvailableModels([]);
+          setSelectedModel("");
+        }
       } finally {
+        setIsModelsLoading(false);
         setIsLoadingModels(false);
       }
     };
 
     fetchModels();
-  }, []);
+  }, [selectedProvider]);
+
+  // Fetch OpenRouter models when API key is provided
+  useEffect(() => {
+    const fetchOpenRouterModels = async () => {
+      if (selectedProvider !== 'openrouter' || !apiKey.trim()) {
+        return;
+      }
+
+      try {
+        setIsModelsLoading(true);
+        const response = await fetch('/api/workflow/openrouter-models', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ apiKey: apiKey.trim() }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error?.message || 'Failed to fetch OpenRouter models');
+        }
+
+        const data = await response.json();
+        if (data.success && data.data?.models) {
+          setAvailableModels(data.data.models.map((model: string) => ({ name: model, model })));
+          if (data.data.models.length > 0) {
+            setSelectedModel(data.data.models[0]);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch OpenRouter models:', error);
+        setResult(`Error: ${error instanceof Error ? error.message : 'Failed to fetch OpenRouter models'}`);
+        setAvailableModels([]);
+        setSelectedModel("");
+      } finally {
+        setIsModelsLoading(false);
+      }
+    };
+
+    const timeoutId = setTimeout(fetchOpenRouterModels, 500); // Debounce API calls
+    return () => clearTimeout(timeoutId);
+  }, [selectedProvider, apiKey]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,6 +134,12 @@ function Home() {
       return;
     }
     
+    // Validate API key for OpenRouter
+    if (selectedProvider === 'openrouter' && !apiKey.trim()) {
+      setResult('API key is required for OpenRouter provider');
+      return;
+    }
+    
     // Ensure URL has http:// or https://
     const formattedUrl = url.startsWith('http') ? url : `https://${url}`;
     
@@ -65,7 +149,10 @@ function Home() {
     try {
       console.log('Sending request to /api/workflow/start', { 
         competitorUrl: formattedUrl,
-        editorId: 'web-interface' 
+        editorId: 'web-interface',
+        model: selectedModel,
+        provider: selectedProvider,
+        apiKey: selectedProvider === 'openrouter' ? apiKey : undefined,
       });
       
       const response = await fetch('/api/workflow/start', {
@@ -77,7 +164,9 @@ function Home() {
         body: JSON.stringify({ 
           competitorUrl: formattedUrl,
           editorId: 'web-interface',
-          model: selectedModel
+          model: selectedModel,
+          provider: selectedProvider,
+          apiKey: selectedProvider === 'openrouter' ? apiKey : undefined,
         }),
       });
       
@@ -139,36 +228,99 @@ function Home() {
             </div>
           </div>
 
+          {/* Provider Selection */}
           <div>
-            <label htmlFor="model" className="block text-sm font-medium text-gray-700">
-              Select Model
+            <label htmlFor="provider" className="block text-sm font-medium text-gray-700">
+              Provider
             </label>
             <select
-              id="model"
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+              id="provider"
+              value={selectedProvider}
+              onChange={(e) => setSelectedProvider(e.target.value)}
               disabled={isSubmitting}
+              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
             >
-              {availableModels.map((model) => (
-                <option key={model.model} value={model.model}>
-                  {model.name} {model.model === 'phi4-mini-reasoning' ? '(Recommended)' : ''}
+              {providers.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.name}
                 </option>
               ))}
             </select>
           </div>
 
+          {/* API Key Input for OpenRouter */}
+          {selectedProvider === 'openrouter' && (
+            <div>
+              <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700">
+                OpenRouter API Key
+              </label>
+              <div className="mt-1">
+                <input
+                  type="password"
+                  id="apiKey"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Enter your OpenRouter API key"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={isSubmitting}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Your API key is stored only in memory and never saved to disk.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label htmlFor="model" className="block text-sm font-medium text-gray-700">
+              Select Model
+            </label>
+            {isModelsLoading ? (
+              <div className="mt-1 flex items-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-500"></div>
+                <span className="text-sm text-gray-600">Loading models...</span>
+              </div>
+            ) : availableModels.length === 0 && selectedProvider === 'openrouter' && !apiKey.trim() ? (
+              <div className="mt-1 p-2 text-sm text-gray-500 border border-gray-300 rounded-md">
+                Enter your OpenRouter API key to see available models
+              </div>
+            ) : availableModels.length === 0 ? (
+              <div className="mt-1 p-2 text-sm text-gray-500 border border-gray-300 rounded-md">
+                No models available
+              </div>
+            ) : (
+              <select
+                id="model"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+                disabled={isSubmitting || (selectedProvider === 'openrouter' && !apiKey.trim())}
+              >
+                {availableModels.map((model) => (
+                  <option key={model.model} value={model.model}>
+                    {model.name} {model.model === 'phi4-mini-reasoning' ? '(Recommended)' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
           <div>
             <button
               type="submit"
-              disabled={isSubmitting || !url || !selectedModel}
+              disabled={isSubmitting || isModelsLoading || (selectedProvider === 'openrouter' && (!apiKey.trim() || !selectedModel))}
               className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
-                isSubmitting || !url || !selectedModel
+                isSubmitting || isModelsLoading || (selectedProvider === 'openrouter' && (!apiKey.trim() || !selectedModel))
                   ? 'bg-blue-300 cursor-not-allowed'
                   : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
               }`}
             >
-              {isSubmitting ? 'Processing...' : 'Analyze URL'}
+              {isSubmitting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                  Processing...
+                </>
+              ) : 'Analyze URL'}
             </button>
           </div>
         </form>
@@ -199,6 +351,7 @@ function Router() {
   
   return (
     <Switch>
+      <Route path="/new-article" component={NewArticle} />
       <Route path="/" component={Home} />
       <Route path="/workflow/:executionId" component={WorkflowStatus} />
       <Route>404, Not Found! {location}</Route>

@@ -1,8 +1,9 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { createOllamaClient } from '../agents/ollamaClient';
+import { createOpenRouterClient } from '../agents/openRouterClient';
 import { createWorkflow } from '../agents/observerWorkflow';
-import { getPipelineExecution } from '../pipelineState';
+import { getPipelineExecution, clearSuspensionState } from '../pipelineState';
 
 // Add CORS middleware
 const allowedOrigins = [
@@ -30,12 +31,127 @@ const router = Router();
 router.use(allowCors);
 
 /**
+ * GET /api/workflow/models
+ * 
+ * Get available Ollama models
+ */
+router.get('/models', async (req: Request, res: Response) => {
+  try {
+    // Create Ollama client with default configuration
+    const ollamaClient = createOllamaClient('gemma3:270m'); // Use any model to create client
+    
+    // Check if Ollama is healthy
+    const isHealthy = await ollamaClient.checkHealth();
+    
+    if (!isHealthy) {
+      return res.status(503).json({
+        success: false,
+        error: {
+          code: 'OLLAMA_UNAVAILABLE',
+          message: 'Ollama service is not available',
+        },
+      });
+    }
+    
+    // Get available models using axios directly since client is private
+    const axios = (ollamaClient as any).client; // Access private client for this specific case
+    const response = await axios.get('/api/tags');
+    const models = response.data.models || [];
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        models: models.map((m: any) => m.name),
+      },
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    console.error('[API] Failed to get Ollama models:', {
+      error: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'MODELS_FETCH_FAILED',
+        message: `Failed to fetch models: ${errorMessage}`,
+      },
+    });
+  }
+});
+
+/**
+ * POST /api/workflow/openrouter-models
+ * 
+ * Get available OpenRouter models
+ */
+router.post('/openrouter-models', async (req: Request, res: Response) => {
+  try {
+    const { apiKey } = req.body;
+    
+    if (!apiKey) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'API key is required',
+        },
+      });
+    }
+    
+    // Fetch models from OpenRouter
+    const response = await fetch('https://openrouter.ai/api/v1/models', {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+    
+    const data = await response.json();
+    
+    // Extract model names from the response
+    const models = data.data?.map((model: any) => model.id) || [];
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        models,
+      },
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    console.error('[API] Failed to get OpenRouter models:', {
+      error: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'OPENROUTER_MODELS_FETCH_FAILED',
+        message: `Failed to fetch OpenRouter models: ${errorMessage}`,
+      },
+    });
+  }
+});
+
+/**
  * Input validation schema for starting a workflow
  */
 const startWorkflowSchema = z.object({
   competitorUrl: z.string().url('Invalid URL format'),
   editorId: z.string().optional().default('web-interface'),
   model: z.string().optional().default('phi4-mini-reasoning'),
+  provider: z.enum(['ollama', 'openrouter']).optional().default('ollama'),
+  apiKey: z.string().optional(),
 });
 
 /**
@@ -76,12 +192,20 @@ router.post('/start', async (req: Request, res: Response) => {
       });
     }
 
-    const { competitorUrl, editorId, model } = validationResult.data;
+    const { competitorUrl, editorId, model, provider, apiKey } = validationResult.data;
 
-    console.log(`[API] Starting workflow for URL: ${competitorUrl} with model: ${model}`);
+    console.log(`[API] Starting workflow for URL: ${competitorUrl} with model: ${model} and provider: ${provider}`);
 
-    // Create Ollama client with the selected model and workflow
-    const ollamaClient = createOllamaClient(model);
+    // Create appropriate client based on provider
+    let ollamaClient;
+    if (provider === 'openrouter' && apiKey) {
+      // For OpenRouter, we'll create a custom client
+      ollamaClient = createOpenRouterClient(apiKey, model);
+    } else {
+      // Default to Ollama client
+      ollamaClient = createOllamaClient(model);
+    }
+    
     const workflow = createWorkflow(ollamaClient);
 
     // Start workflow asynchronously
@@ -90,7 +214,9 @@ router.post('/start', async (req: Request, res: Response) => {
     const result = await workflow.execute({
       url: competitorUrl,
       editorId,
-      model, // Pass the model to the workflow context
+      model,
+      provider,
+      apiKey,
     });
 
     // Return execution ID and status
@@ -166,7 +292,10 @@ router.get('/executions/:executionId', async (req: Request, res: Response) => {
     const parsedExecution = {
       executionId: execution.executionId,
       status: execution.status,
-      input: safeJsonParse(execution.input),
+      input: {
+        competitorUrl: execution.competitorUrl,
+        editorId: execution.editorId,
+      },
       context: safeJsonParse(execution.context),
       suspension: safeJsonParse(execution.suspension),
       metrics: safeJsonParse(execution.metrics),
@@ -206,7 +335,7 @@ router.get('/executions/:executionId', async (req: Request, res: Response) => {
 router.post('/executions/:executionId/resume', async (req: Request, res: Response) => {
   try {
     const { executionId } = req.params;
-    const { action, data } = req.body;
+    const { action, gate, comments } = req.body;
 
     if (!executionId) {
       return res.status(400).json({
@@ -220,14 +349,66 @@ router.post('/executions/:executionId/resume', async (req: Request, res: Respons
 
     console.log(`[API] Resuming execution: ${executionId} with action: ${action}`);
 
-    // In a real implementation, you would resume the workflow here
-    // For now, we'll just return a success response
+    // Validate that we have the required fields
+    if (!action || !gate) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Action and gate are required',
+        },
+      });
+    }
+
+    // Get the execution to retrieve the model information
+    const execution = await getPipelineExecution(executionId);
+    if (!execution) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'EXECUTION_NOT_FOUND',
+          message: `Execution not found: ${executionId}`,
+        },
+      });
+    }
+
+    // Create appropriate client based on the provider used for the initial execution
+    const model = execution.model || 'phi4-mini-reasoning'; // Use stored model or default
+    const provider = (execution as any).provider || 'ollama'; // Use stored provider or default
+    let ollamaClient;
+    
+    if (provider === 'openrouter' && (execution as any).apiKey) {
+      // For OpenRouter, we'll create a custom client
+      ollamaClient = createOpenRouterClient((execution as any).apiKey, model);
+    } else {
+      // Default to Ollama client
+      ollamaClient = createOllamaClient(model);
+    }
+    
+    const workflow = createWorkflow(ollamaClient);
+
+    // Prepare resume data in the format expected by the workflow
+    const resumeData = {
+      gate: gate as 'concepts' | 'draft',
+      approved: action === 'approve',
+      comments,
+    };
+
+    // Resume the workflow execution
+    const result = await workflow.resume(executionId, resumeData);
+
     return res.status(200).json({
       success: true,
       data: {
         executionId,
-        status: 'running',
-        message: 'Workflow resumed successfully',
+        status: result.status,
+        message: result.status === 'suspended' 
+          ? 'Workflow resumed and suspended at next approval gate'
+          : result.status === 'success'
+          ? 'Workflow completed successfully'
+          : result.status === 'error'
+          ? `Workflow failed: ${result.error}`
+          : 'Workflow resumed',
       },
     });
   } catch (error) {

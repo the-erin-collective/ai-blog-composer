@@ -1,4 +1,4 @@
-import { OllamaClient, OllamaMessage } from './ollamaClient';
+import { LLMClient, LLMMessage } from './llmClient';
 import { OutlineOutput } from './outlineGenerator';
 
 /**
@@ -23,15 +23,15 @@ export interface DraftOutput {
 
 /**
  * Draft Generator Agent
- * Uses Ollama LLM to generate complete article drafts from structured outlines
+ * Uses LLM to generate complete article drafts from structured outlines
  * Produces high-quality, original long-form content with consistent tone and style
  * Requirements: 6.1, 6.2, 6.3, 6.4
  */
 export class DraftGenerator {
-  private ollamaClient: OllamaClient;
+  private llmClient: LLMClient;
 
-  constructor(ollamaClient: OllamaClient) {
-    this.ollamaClient = ollamaClient;
+  constructor(llmClient: LLMClient) {
+    this.llmClient = llmClient;
   }
 
   /**
@@ -42,7 +42,7 @@ export class DraftGenerator {
   async generateDraft(input: DraftInput): Promise<DraftOutput> {
     const prompt = this.buildPrompt(input);
 
-    const messages: OllamaMessage[] = [
+    const messages: LLMMessage[] = [
       {
         role: 'system',
         content: 'You are an expert content writer specializing in creating high-quality, original, SEO-optimized articles. Write engaging, well-structured content that maintains consistent tone and style throughout. Ensure all content is structurally and conceptually distinct from any source material. Return responses in valid JSON format only.'
@@ -54,7 +54,7 @@ export class DraftGenerator {
     ];
 
     try {
-      const response = await this.ollamaClient.chat(messages);
+      const response = await this.llmClient.chat(messages);
       return this.parseResponse(response);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -198,13 +198,10 @@ Only return the JSON, no additional text.
 
   /**
    * Calculate total word count from body paragraphs
-   * @param bodyParagraphs - Array of paragraph strings
-   * @returns Total word count
    */
-  private calculateWordCount(bodyParagraphs: string[]): number {
-    const allText = bodyParagraphs.join(' ');
-    // Split by whitespace and filter out empty strings
-    const words = allText.trim().split(/\s+/).filter(word => word.length > 0);
-    return words.length;
+  private calculateWordCount(paragraphs: string[]): number {
+    return paragraphs.reduce((total, paragraph) => {
+      return total + (paragraph.trim().split(/\s+/).length || 0);
+    }, 0);
   }
 }

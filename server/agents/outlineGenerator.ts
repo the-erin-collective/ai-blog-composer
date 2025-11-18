@@ -1,4 +1,4 @@
-import { OllamaClient, OllamaMessage } from './ollamaClient';
+import { LLMClient, LLMMessage } from './llmClient';
 
 /**
  * Input interface for outline generation
@@ -30,15 +30,15 @@ export interface OutlineOutput {
 
 /**
  * Outline Generator Agent
- * Uses Ollama LLM to generate structured article outlines from approved concepts
+ * Uses LLM to generate structured article outlines from approved concepts
  * Implements SEO best practices and proper heading hierarchy
  * Requirements: 5.1, 5.2, 5.3, 5.4
  */
 export class OutlineGenerator {
-  private ollamaClient: OllamaClient;
+  private llmClient: LLMClient;
 
-  constructor(ollamaClient: OllamaClient) {
-    this.ollamaClient = ollamaClient;
+  constructor(llmClient: LLMClient) {
+    this.llmClient = llmClient;
   }
 
   /**
@@ -49,7 +49,7 @@ export class OutlineGenerator {
   async generateOutline(input: OutlineInput): Promise<OutlineOutput> {
     const prompt = this.buildPrompt(input);
 
-    const messages: OllamaMessage[] = [
+    const messages: LLMMessage[] = [
       {
         role: 'system',
         content: 'You are an expert content strategist and SEO specialist. Create structured article outlines that follow SEO best practices, proper heading hierarchy, and logical flow. Return responses in valid JSON format only.'
@@ -61,7 +61,7 @@ export class OutlineGenerator {
     ];
 
     try {
-      const response = await this.ollamaClient.chat(messages);
+      const response = await this.llmClient.chat(messages);
       return this.parseResponse(response);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

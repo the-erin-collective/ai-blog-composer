@@ -1,5 +1,5 @@
 import { extractMetadata, ExtractedMetadata } from './metadataExtractor';
-import { OllamaClient } from './ollamaClient';
+import { LLMClient } from './llmClient';
 import { MetadataSummarizer, ConceptExtractionResult } from './metadataSummarizer';
 import { OutlineGenerator, OutlineOutput } from './outlineGenerator';
 import { DraftGenerator, DraftOutput } from './draftGenerator';
@@ -19,6 +19,9 @@ import {
 export interface WorkflowInput {
   url: string;
   editorId?: string;
+  model?: string;
+  provider?: 'ollama' | 'openrouter';
+  apiKey?: string;
 }
 
 export interface WorkflowOutput {
@@ -45,20 +48,20 @@ export interface ResumeData {
  * Orchestrates the linear pipeline:
  * Start → Metadata Extractor → Metadata Summarizer → End
  *
- * This is the main workflow that validates Ollama integration
+ * This is the main workflow that validates LLM integration
  */
 export class ObserverWorkflow {
-  private ollamaClient: OllamaClient;
+  private llmClient: LLMClient;
   private summarizer: MetadataSummarizer;
   private outlineGenerator: OutlineGenerator;
   private draftGenerator: DraftGenerator;
   private htmlFormatter: HtmlFormatter;
 
-  constructor(ollamaClient: OllamaClient) {
-    this.ollamaClient = ollamaClient;
-    this.summarizer = new MetadataSummarizer(ollamaClient);
-    this.outlineGenerator = new OutlineGenerator(ollamaClient);
-    this.draftGenerator = new DraftGenerator(ollamaClient);
+  constructor(llmClient: LLMClient) {
+    this.llmClient = llmClient;
+    this.summarizer = new MetadataSummarizer(llmClient);
+    this.outlineGenerator = new OutlineGenerator(llmClient);
+    this.draftGenerator = new DraftGenerator(llmClient);
     this.htmlFormatter = new HtmlFormatter();
   }
 
@@ -76,6 +79,9 @@ export class ObserverWorkflow {
       const pipelineInput: PipelineInput = {
         competitorUrl: input.url,
         editorId: input.editorId || 'default-editor',
+        model: input.model,
+        provider: input.provider,
+        apiKey: input.apiKey,
       };
 
       console.log(`[Workflow] Creating pipeline execution for URL: ${input.url}`);
@@ -107,8 +113,6 @@ export class ObserverWorkflow {
         console.log(`[Workflow] Extracted metadata: ${metadata.title}, ${metadata.headings.length} headings`);
 
         // Save metadata to context
-        // Note: The current metadata extractor returns headings as a flat array of strings
-        // For now, we'll store them all as h2 headings in the context
         const metadataContext: PipelineContext = {
           metadata: {
             title: metadata.title,
@@ -147,24 +151,24 @@ export class ObserverWorkflow {
         throw new Error(`Metadata extraction failed: ${errorMessage}`);
       }
 
-      // Step 2: Metadata Summarization (LLM-Powered via Ollama)
+      // Step 2: Metadata Summarization (LLM-Powered)
       console.log(`[Workflow] Step 2: Starting concept extraction`);
       let concepts: ConceptExtractionResult;
       
       try {
         await addAuditLogEntry(executionId, 'STEP_STARTED', 'concept-extraction', {});
 
-        // Try to extract concepts if Ollama is available, otherwise use a fallback
+        // Try to extract concepts if LLM is available, otherwise use a fallback
         try {
-          const isOllamaAvailable = await this.checkOllamaHealth();
-          if (isOllamaAvailable) {
+          const isLlmAvailable = await this.llmClient.checkHealth();
+          if (isLlmAvailable) {
             concepts = await this.summarizer.extractConcepts(metadata);
-            console.log(`[Workflow] Extracted ${concepts.concepts.length} concepts using Ollama`);
+            console.log(`[Workflow] Extracted ${concepts.concepts.length} concepts using LLM`);
           } else {
-            throw new Error('Ollama not available, using fallback concepts');
+            throw new Error('LLM not available, using fallback concepts');
           }
         } catch (error) {
-          // Fallback to simple keyword extraction if Ollama is not available
+          // Fallback to simple keyword extraction if LLM is not available
           console.log(`[Workflow] Using fallback concept extraction`);
           concepts = this.extractFallbackConcepts(metadata);
         }
@@ -178,7 +182,7 @@ export class ObserverWorkflow {
 
         await addAuditLogEntry(executionId, 'STEP_COMPLETED', 'concept-extraction', {
           conceptCount: concepts.concepts.length,
-          usedFallback: !(await this.ollamaClient.checkHealth())
+          usedFallback: !(await this.llmClient.checkHealth())
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -207,11 +211,10 @@ export class ObserverWorkflow {
         await saveSuspensionState(
           executionId,
           'Waiting for concept approval',
-          'concepts', // This should match what the frontend expects for stepId
+          'concepts',
           {
             gate: 'concepts',
             concepts: conceptList,
-            // Add additional metadata that might be useful for the frontend
             metadata: {
               title: metadata.title || 'Untitled',
               url: input.url,
@@ -298,10 +301,12 @@ export class ObserverWorkflow {
    * @param resumeData - Data containing approval decision and comments
    * @returns The workflow output after resuming
    * 
-   * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 1.5
+   * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
    */
   async resume(executionId: string, resumeData: ResumeData): Promise<WorkflowOutput> {
     const startTime = new Date();
+    // Move input variable declaration to outer scope so it's accessible in catch blocks
+    let input: any;
 
     try {
       console.log(`[Workflow] Resuming execution: ${executionId}`);
@@ -310,7 +315,6 @@ export class ObserverWorkflow {
       let suspensionState;
       let execution;
       let context: any;
-      let input: any;
 
       try {
         suspensionState = await loadSuspensionState(executionId);
@@ -324,8 +328,16 @@ export class ObserverWorkflow {
           throw new Error(`Execution not found: ${executionId}`);
         }
 
-        context = execution.context ? JSON.parse(execution.context) : {};
-        input = execution.input ? JSON.parse(execution.input) : {};
+        // Handle both string and object formats for context
+        context = execution.context ? 
+          (typeof execution.context === 'string' ? JSON.parse(execution.context) : execution.context) : 
+          {};
+          
+        // Use competitorUrl and editorId from execution
+        input = {
+          competitorUrl: execution.competitorUrl,
+          editorId: execution.editorId
+        };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error(`[Workflow] Failed to load execution state:`, {
@@ -337,7 +349,7 @@ export class ObserverWorkflow {
       }
 
       // Handle concept approval gate
-      if (suspensionState.stepId === 'gate-concept-approval' && resumeData.gate === 'concepts') {
+      if (suspensionState.stepId === 'concepts' && resumeData.gate === 'concepts') {
         console.log(`[Workflow] Processing concept approval: ${resumeData.approved ? 'APPROVED' : 'REJECTED'}`);
 
         try {
@@ -581,33 +593,29 @@ export class ObserverWorkflow {
 
         // Step 5: HTML Formatting
         console.log(`[Workflow] Step 5: Starting HTML formatting`);
-        let htmlOutput;
+        let htmlOutput: string;
         
         try {
           await addAuditLogEntry(executionId, 'STEP_STARTED', 'html-formatting', {});
 
           htmlOutput = this.htmlFormatter.formatToHtml({
             draft: context.draft,
-          });
-          console.log(`[Workflow] Generated HTML output`);
+          }).html;
 
           // Save HTML to context
           await updatePipelineExecution(executionId, {
             context: {
-              html: htmlOutput.html,
+              html: htmlOutput,
             },
           });
 
-          await addAuditLogEntry(executionId, 'STEP_COMPLETED', 'html-formatting', {
-            htmlLength: htmlOutput.html.length,
-          });
+          await addAuditLogEntry(executionId, 'STEP_COMPLETED', 'html-formatting', {});
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           console.error(`[Workflow] HTML formatting failed:`, {
             error: errorMessage,
             stack: error instanceof Error ? error.stack : undefined,
             executionId,
-            draftWordCount: context.draft?.wordCount || 0,
           });
 
           await addAuditLogEntry(executionId, 'STEP_FAILED', 'html-formatting', {
@@ -617,7 +625,9 @@ export class ObserverWorkflow {
           throw new Error(`HTML formatting failed: ${errorMessage}`);
         }
 
-        // Mark workflow as completed
+        // Complete the workflow
+        console.log(`[Workflow] Workflow completed successfully`);
+        
         try {
           await updatePipelineExecution(executionId, {
             status: 'completed',
@@ -626,19 +636,15 @@ export class ObserverWorkflow {
           await addAuditLogEntry(executionId, 'WORKFLOW_COMPLETED', 'workflow', {
             totalDuration: Date.now() - startTime.getTime(),
           });
-
-          console.log(`[Workflow] Workflow completed successfully: ${executionId}`);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          console.error(`[Workflow] Failed to mark workflow as completed:`, {
+          console.error(`[Workflow] Failed to update completion status:`, {
             error: errorMessage,
             stack: error instanceof Error ? error.stack : undefined,
             executionId,
           });
-          // Don't throw here - we still want to return the successful result
         }
 
-        // Return results
         return {
           executionId,
           url: input.competitorUrl,
@@ -646,13 +652,13 @@ export class ObserverWorkflow {
           concepts: { concepts: context.concepts || [], summary: '' },
           outline: context.outline,
           draft: context.draft,
-          html: htmlOutput.html,
+          html: htmlOutput,
           status: 'success',
           executedAt: startTime.toISOString(),
         };
       }
 
-      // If we reach here, the gate type doesn't match
+      // If we get here, the suspension state doesn't match any known gate
       throw new Error(`Invalid resume data: gate type mismatch or unsupported gate`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -662,7 +668,7 @@ export class ObserverWorkflow {
         error: errorMessage,
         stack: errorStack,
         executionId,
-        gate: resumeData.gate,
+        gate: (resumeData as any)?.gate,
         duration: Date.now() - startTime.getTime(),
       });
 
@@ -688,7 +694,7 @@ export class ObserverWorkflow {
 
       return {
         executionId,
-        url: '',
+        url: input?.competitorUrl || 'unknown',
         metadata: { title: '', metaDescription: '', headings: [] },
         concepts: { concepts: [], summary: '' },
         status: 'error',
@@ -699,36 +705,38 @@ export class ObserverWorkflow {
   }
 
   /**
-   * Fallback concept extraction when Ollama is not available
+   * Extract fallback concepts when LLM is not available
+   * Simple keyword extraction from metadata
    */
-  private extractFallbackConcepts(metadata: any): ConceptExtractionResult {
-    // Simple keyword extraction from title and description
-    const text = `${metadata.title} ${metadata.metaDescription || ''}`.toLowerCase();
-    const words = text
-      .split(/\s+/)
-      .filter(word => word.length > 3) // Filter out short words
-      .filter(word => !/^https?:\/\//.test(word)) // Filter out URLs
-      .filter(word => !/^[^a-z]/.test(word)); // Filter out words starting with non-letters
-
-    // Count word frequencies
-    const wordCounts = words.reduce((counts: Record<string, number>, word: string) => {
-      counts[word] = (counts[word] || 0) + 1;
-      return counts;
-    }, {});
-
-    // Get top 5 most common words as concepts
-    const concepts = Object.entries(wordCounts)
+  private extractFallbackConcepts(metadata: ExtractedMetadata): ConceptExtractionResult {
+    // Simple keyword extraction from title and headings
+    const text = `${metadata.title} ${metadata.headings.join(' ')}`;
+    const words = text.toLowerCase().match(/\b(\w+)\b/g) || [];
+    const wordCount: Record<string, number> = {};
+    
+    // Count word frequency
+    words.forEach(word => {
+      if (word.length > 3) { // Only consider words longer than 3 characters
+        wordCount[word] = (wordCount[word] || 0) + 1;
+      }
+    });
+    
+    // Get top 5 words as concepts
+    const concepts = Object.entries(wordCount)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
-      .map(([word]) => word.charAt(0).toUpperCase() + word.slice(1));
-
+      .map(([word]) => word.charAt(0).toUpperCase() + word.slice(1)); // Capitalize first letter
+    
     return {
       concepts,
-      summary: `Extracted ${concepts.length} key concepts from content`
+      summary: `Fallback concepts extracted from metadata: ${concepts.join(', ')}`
     };
   }
 }
 
-export function createWorkflow(ollamaClient: OllamaClient): ObserverWorkflow {
-  return new ObserverWorkflow(ollamaClient);
+/**
+ * Create a new workflow instance with the specified LLM client
+ */
+export function createWorkflow(llmClient: LLMClient): ObserverWorkflow {
+  return new ObserverWorkflow(llmClient);
 }

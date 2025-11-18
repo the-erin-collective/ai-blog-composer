@@ -34,6 +34,7 @@ export interface PipelineMetrics {
   }>;
 }
 
+// Workflow execution context containing intermediate results
 export interface PipelineContext {
   metadata?: {
     title: string;
@@ -65,18 +66,22 @@ export interface PipelineContext {
   distinctivenessScore?: number;
   revisionCount?: number;
   html?: string;
-  [key: string]: any;
+  resumeData?: Record<string, any>; // Add resumeData field
 }
 
 export interface PipelineInput {
   competitorUrl: string;
   editorId: string;
+  model?: string; // Add model information
 }
 
 export interface PipelineExecution {
   executionId: string;
   competitorUrl: string;
   editorId: string;
+  model?: string; // Add model information
+  provider?: 'ollama' | 'openrouter'; // Add provider information
+  apiKey?: string; // Add API key information (for OpenRouter)
   status: PipelineStatus;
   context: PipelineContext;
   suspension?: SuspensionData;
@@ -92,12 +97,15 @@ export const pipelineState = {
   /**
    * Create a new pipeline execution in memory.
    */
-  async createPipelineExecution(input: { competitorUrl: string; editorId: string }): Promise<PipelineExecution> {
+  async createPipelineExecution(input: { competitorUrl: string; editorId: string; model?: string; provider?: 'ollama' | 'openrouter'; apiKey?: string }): Promise<PipelineExecution> {
     const now = new Date().toISOString();
     const execution: PipelineExecution = {
       executionId: input.competitorUrl, // Using URL as ID for simplicity
       competitorUrl: input.competitorUrl,
       editorId: input.editorId,
+      model: input.model, // Store model information
+      provider: input.provider, // Store provider information
+      apiKey: input.apiKey, // Store API key information (for OpenRouter)
       status: 'pending',
       context: {},
       metrics: {
@@ -251,6 +259,9 @@ export const pipelineState = {
 export interface PipelineInput {
   competitorUrl: string;
   editorId: string;
+  model?: string; // Add model information
+  provider?: 'ollama' | 'openrouter'; // Add provider information
+  apiKey?: string; // Add API key information (for OpenRouter)
 }
 
 // Workflow execution context containing intermediate results
@@ -285,6 +296,7 @@ export interface PipelineContext {
   distinctivenessScore?: number;
   revisionCount?: number;
   html?: string;
+  resumeData?: Record<string, any>; // Add resumeData field
 }
 
 /**
@@ -321,7 +333,6 @@ export interface PipelineMetrics {
 /**
  * Pipeline execution status type.
  */
-export type PipelineStatus = "running" | "suspended" | "completed" | "rejected" | "failed";
 
 /**
  * Create a new pipeline execution in memory.
@@ -334,6 +345,9 @@ export async function createPipelineExecution(input: PipelineInput): Promise<Pip
     executionId,
     competitorUrl: input.competitorUrl,
     editorId: input.editorId,
+    model: input.model, // Store model information
+    provider: input.provider, // Store provider information
+    apiKey: input.apiKey, // Store API key information (for OpenRouter)
     status: 'pending',
     context: {},
     metrics: {
@@ -515,7 +529,12 @@ export async function loadSuspensionState(executionId: string): Promise<Suspensi
   }
 
   try {
-    return JSON.parse(execution.suspension) as SuspensionData;
+    // Handle both string and object formats for suspension data
+    if (typeof execution.suspension === 'string') {
+      return JSON.parse(execution.suspension) as SuspensionData;
+    } else {
+      return execution.suspension as SuspensionData;
+    }
   } catch (error) {
     console.error("[PipelineState] Failed to parse suspension data:", error);
     throw new Error("Invalid suspension data format");
@@ -546,8 +565,15 @@ export async function clearSuspensionState(
     throw new Error(`Execution is not suspended: ${executionId}`);
   }
 
-  // Get suspension data for audit log
-  const suspensionData = execution.suspension ? JSON.parse(execution.suspension) : null;
+  // Get suspension data for audit log, handling both string and object formats
+  let suspensionData = null;
+  if (execution.suspension) {
+    if (typeof execution.suspension === 'string') {
+      suspensionData = JSON.parse(execution.suspension);
+    } else {
+      suspensionData = execution.suspension;
+    }
+  }
 
   // Add audit log entry for resumption
   await addAuditLogEntry(executionId, "WORKFLOW_RESUMED", suspensionData?.stepId || "unknown", {

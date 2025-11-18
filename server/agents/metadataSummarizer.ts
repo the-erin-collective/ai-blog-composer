@@ -1,4 +1,4 @@
-import { OllamaClient, OllamaMessage } from './ollamaClient';
+import { LLMClient, LLMMessage } from './llmClient';
 import { ExtractedMetadata } from './metadataExtractor';
 
 export interface ConceptExtractionResult {
@@ -8,23 +8,23 @@ export interface ConceptExtractionResult {
 
 /**
  * Metadata Summarizer Agent
- * Uses Ollama LLM to generate 5-7 high-level concepts from extracted metadata
- * This is the core LLM-powered step that validates Ollama integration
+ * Uses LLM to generate 5-7 high-level concepts from extracted metadata
+ * This is the core LLM-powered step that validates LLM integration
  */
 export class MetadataSummarizer {
-  private ollamaClient: OllamaClient;
+  private llmClient: LLMClient;
 
-  constructor(ollamaClient: OllamaClient) {
-    this.ollamaClient = ollamaClient;
+  constructor(llmClient: LLMClient) {
+    this.llmClient = llmClient;
   }
 
   /**
-   * Extract concepts from metadata using Ollama
+   * Extract concepts from metadata using LLM
    */
   async extractConcepts(metadata: ExtractedMetadata): Promise<ConceptExtractionResult> {
     const prompt = this.buildPrompt(metadata);
 
-    const messages: OllamaMessage[] = [
+    const messages: LLMMessage[] = [
       {
         role: 'system',
         content: 'You are an expert content analyst. Extract 5-7 high-level concepts from the given content metadata. Return a JSON response with "concepts" (array of strings) and "summary" (brief description).'
@@ -36,7 +36,7 @@ export class MetadataSummarizer {
     ];
 
     try {
-      const response = await this.ollamaClient.chat(messages);
+      const response = await this.llmClient.chat(messages);
       return this.parseResponse(response);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

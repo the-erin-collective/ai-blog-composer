@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { LLMClient, LLMMessage } from './llmClient';
 
 export interface OllamaConfig {
   baseUrl: string;
@@ -6,7 +7,7 @@ export interface OllamaConfig {
   temperature?: number;
 }
 
-export interface OllamaMessage {
+export interface OllamaMessage extends LLMMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
 }
@@ -23,7 +24,7 @@ export interface OllamaResponse {
  * Connects to a local Ollama instance and handles LLM requests
  * Uses OpenAI-compatible API format
  */
-export class OllamaClient {
+export class OllamaClient implements LLMClient {
   private client: AxiosInstance;
   private config: OllamaConfig;
 
@@ -43,18 +44,14 @@ export class OllamaClient {
   }
 
   /**
-   * Send a message to the Ollama model and get a response
-   */
-  /**
    * Check if the Ollama server is running and the model is available
    */
   async checkHealth(): Promise<boolean> {
     try {
       const response = await this.client.get('/api/tags');
-      const models = response.data?.models || [];
+      const models = response.data.models || [];
       return models.some((m: any) => m.name === this.config.model);
-    } catch (error) {
-      console.error('[Ollama] Health check failed:', error);
+    } catch {
       return false;
     }
   }
@@ -62,7 +59,7 @@ export class OllamaClient {
   /**
    * Send a message to the Ollama model and get a response
    */
-  async chat(messages: OllamaMessage[]): Promise<string> {
+  async chat(messages: LLMMessage[]): Promise<string> {
     try {
       const response = await this.client.post<OllamaResponse>('/api/chat', {
         model: this.config.model,
@@ -75,19 +72,6 @@ export class OllamaClient {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       throw new Error(`Ollama API request failed: ${errorMessage}`);
-    }
-  }
-
-  /**
-   * Check if Ollama is available and the model is loaded
-   */
-  async checkHealth(): Promise<boolean> {
-    try {
-      const response = await this.client.get('/api/tags');
-      const models = response.data.models || [];
-      return models.some((m: any) => m.name === this.config.model);
-    } catch {
-      return false;
     }
   }
 }

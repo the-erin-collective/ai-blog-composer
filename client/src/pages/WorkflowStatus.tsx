@@ -1,27 +1,31 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, useParams } from "wouter";
-import { Button } from "../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+import { 
+  Card, 
+  CardHeader, 
+  CardTitle, 
+  CardDescription, 
+  CardContent 
 } from "../components/ui/card";
-import { Alert, AlertDescription } from "../components/ui/alert";
-import {
-  Loader2,
-  AlertCircle,
-  CheckCircle2,
-  Clock,
-  Play,
-  X,
-  MessageSquare,
-} from "lucide-react";
-import { Textarea } from "../components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "../components/ui/radio-group";
+import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
+import { Input } from "../components/ui/input";
+import { 
+  Loader2, 
+  CheckCircle2, 
+  X, 
+  Clock, 
+  AlertCircle,
+  Play,
+  Edit3,
+  Save,
+  XCircle,
+  MessageSquare
+} from "lucide-react";
+import { Alert, AlertDescription } from "../components/ui/alert";
 import { useWorkflowWebSocket } from "../hooks/useWorkflowWebSocket";
+import { RadioGroup, RadioGroupItem } from "../components/ui/radio-group";
 
 export default function WorkflowStatus() {
   const [location, setLocation] = useLocation();
@@ -34,14 +38,41 @@ export default function WorkflowStatus() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   
+  // State for editable concepts
+  const [isEditingConcepts, setIsEditingConcepts] = useState(false);
+  const [editableConcepts, setEditableConcepts] = useState<string[]>([]);
+  
   // Use WebSocket hook for real-time updates
   const {
     execution,
     isLoading,
     error,
-    handleResumeWorkflow: resumeWorkflow,
+    resumeWorkflow,
   } = useWorkflowWebSocket(executionId || '');
-
+  
+  // Update editable concepts when execution data changes
+  useEffect(() => {
+    if (execution?.suspension?.data?.concepts) {
+      setEditableConcepts([...execution.suspension.data.concepts]);
+    }
+  }, [execution?.suspension?.data?.concepts]);
+  
+  // Handle concept editing
+  const handleConceptChange = (index: number, value: string) => {
+    const newConcepts = [...editableConcepts];
+    newConcepts[index] = value;
+    setEditableConcepts(newConcepts);
+  };
+  
+  const addConcept = () => {
+    setEditableConcepts([...editableConcepts, '']);
+  };
+  
+  const removeConcept = (index: number) => {
+    const newConcepts = editableConcepts.filter((_, i) => i !== index);
+    setEditableConcepts(newConcepts);
+  };
+  
   // Handle approval submission with loading state
   const handleApprovalSubmit = async (gate: 'concepts' | 'draft') => {
     if (!executionId) return;
@@ -209,9 +240,57 @@ export default function WorkflowStatus() {
                     {suspension.data.metadata?.title && (
                       <h3 className="text-lg font-medium mb-2">{suspension.data.metadata.title}</h3>
                     )}
-                    <h4 className="font-semibold mb-2">Extracted Concepts:</h4>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold">Extracted Concepts:</h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsEditingConcepts(!isEditingConcepts)}
+                        className="text-sm"
+                      >
+                        {isEditingConcepts ? (
+                          <>
+                            <Save className="h-4 w-4 mr-1" />
+                            Save
+                          </>
+                        ) : (
+                          <>
+                            <Edit3 className="h-4 w-4 mr-1" />
+                            Edit
+                          </>
+                        )}
+                      </Button>
+                    </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
-                      {Array.isArray(suspension.data.concepts) && suspension.data.concepts.length > 0 ? (
+                      {isEditingConcepts ? (
+                        <div className="space-y-2">
+                          {editableConcepts.map((concept, index) => (
+                            <div key={index} className="flex items-center space-x-2">
+                              <Input
+                                value={concept}
+                                onChange={(e) => handleConceptChange(index, e.target.value)}
+                                className="flex-1 text-sm"
+                              />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeConcept(index)}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={addConcept}
+                            className="mt-2 text-sm"
+                          >
+                            + Add Concept
+                          </Button>
+                        </div>
+                      ) : Array.isArray(suspension.data.concepts) && suspension.data.concepts.length > 0 ? (
                         <ul className="list-disc list-inside space-y-1">
                           {suspension.data.concepts.map(
                             (concept: string, index: number) => (
@@ -228,7 +307,7 @@ export default function WorkflowStatus() {
                   </div>
                 )}
 
-              {suspension.stepId === "draft" && suspension.data?.draft && (
+              {(suspension.stepId === "draft" || suspension.stepId === "gate-draft-approval") && suspension.data?.draft && (
                 <div>
                   <h4 className="font-semibold mb-2">Generated Draft:</h4>
                   <div className="bg-gray-50 p-4 rounded-lg max-h-96 overflow-y-auto">
@@ -244,40 +323,50 @@ export default function WorkflowStatus() {
 
               {/* Approval Decision */}
               <div className="space-y-4">
-                <Label>Decision:</Label>
-                <RadioGroup
-                  value={approvalDecision}
-                  onValueChange={(value: "approve" | "reject") =>
-                    setApprovalDecision(value)
-                  }
-                  className="flex space-x-8"
-                >
+                <div>Decision:</div>
+                <div className="flex space-x-8">
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="approve" id="approve" />
-                    <Label htmlFor="approve" className="cursor-pointer">
+                    <input
+                      type="radio"
+                      id="approve"
+                      name="decision"
+                      value="approve"
+                      checked={approvalDecision === "approve"}
+                      onChange={() => setApprovalDecision("approve")}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                    />
+                    <label htmlFor="approve" className="cursor-pointer">
                       Approve
-                    </Label>
+                    </label>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="reject" id="reject" />
-                    <Label htmlFor="reject" className="cursor-pointer">
+                    <input
+                      type="radio"
+                      id="reject"
+                      name="decision"
+                      value="reject"
+                      checked={approvalDecision === "reject"}
+                      onChange={() => setApprovalDecision("reject")}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                    />
+                    <label htmlFor="reject" className="cursor-pointer">
                       Reject
-                    </Label>
+                    </label>
                   </div>
-                </RadioGroup>
+                </div>
               </div>
 
               {/* Comments Section */}
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
                   <MessageSquare className="h-4 w-4" />
-                  <Label
-                    htmlFor="comments"
-                    className="cursor-pointer"
+                  <button
+                    type="button"
+                    className="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900"
                     onClick={() => setShowComments(!showComments)}
                   >
                     Add comments
-                  </Label>
+                  </button>
                 </div>
                 {showComments && (
                   <Textarea
@@ -293,9 +382,10 @@ export default function WorkflowStatus() {
               {/* Action Buttons */}
               <div className="flex space-x-4">
                 <Button
-                  onClick={() => handleApprovalSubmit(
-                    (suspension.stepId === "concepts" || suspension.stepId === "gate-concept-approval") ? "concepts" : "draft"
-                  )}
+                  onClick={() => {
+                    const gate = (suspension.stepId === "concepts" || suspension.stepId === "gate-concept-approval") ? "concepts" : "draft";
+                    handleApprovalSubmit(gate);
+                  }}
                   disabled={isSubmitting}
                   className="flex items-center space-x-2"
                 >
