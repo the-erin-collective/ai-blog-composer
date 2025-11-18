@@ -40,7 +40,7 @@ export class OpenRouterClient implements LLMClient {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.config.apiKey}`,
         'HTTP-Referer': 'http://localhost:3000', // Optional, for OpenRouter analytics
-        'X-Title': 'Ollama MVP Prototype', // Optional, for OpenRouter analytics
+        'X-Title': 'AI Blog Composer', // Optional, for OpenRouter analytics
       }
     });
   }

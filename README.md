@@ -1,4 +1,4 @@
-# Ollama Integration MVP - Setup & Usage Guide
+# AI Blog Composer - Setup & Usage Guide
 
 This MVP prototype demonstrates a **lightweight proof of concept** for validating integration with a **local Ollama LLM provider**. It implements a simple linear workflow that extracts metadata from a URL and uses Ollama to generate high-level concepts.
 
@@ -72,7 +72,7 @@ The server will start on `http://localhost:11434` by default.
 ### 1. Install Dependencies
 
 ```bash
-cd /home/ubuntu/ollama-mvp-prototype
+cd /home/ubuntu/ai-blog-composer
 pnpm install
 ```
 
@@ -229,7 +229,7 @@ server/
   routers.ts                  # tRPC API endpoints
 scripts/
   test-workflow.mjs           # CLI test script
-OLLAMA_MVP_README.md          # This file
+README.md                     # This file
 ```
 
 ## Success Criteria

@@ -4,3 +4,4 @@
 /client/node_modules
 /data
 /drizzle
+.env.local
