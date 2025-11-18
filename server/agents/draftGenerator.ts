@@ -58,7 +58,26 @@ export class DraftGenerator {
       return this.parseResponse(response);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`Failed to generate draft: ${errorMessage}`);
+      
+      // Try once more with error context
+      try {
+        const retryMessages: LLMMessage[] = [
+          ...messages,
+          {
+            role: 'assistant',
+            content: `I encountered an error while trying to generate the draft: ${errorMessage}. Please try again and ensure the response is valid JSON with the exact structure requested.`
+          },
+          {
+            role: 'user',
+            content: 'Please regenerate the draft with the same outline but ensure the JSON is properly formatted and complete. Remember to return only valid JSON with the exact structure requested.'
+          }
+        ];
+        
+        const retryResponse = await this.llmClient.chat(retryMessages);
+        return this.parseResponse(retryResponse);
+      } catch (retryError) {
+        throw new Error(`Failed to generate draft after retry: ${errorMessage}`);
+      }
     }
   }
 
@@ -135,13 +154,47 @@ Only return the JSON, no additional text.
    */
   private parseResponse(response: string): DraftOutput {
     try {
-      // Extract JSON from the response
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
+      // First, try to parse the response directly if it's already valid JSON
+      let parsed;
+      try {
+        parsed = JSON.parse(response);
+      } catch (directParseError) {
+        // If direct parsing fails, try to extract JSON from the response
+        // Look for a JSON object that starts with { and ends with }
+        const jsonStart = response.indexOf('{');
+        if (jsonStart === -1) {
+          throw new Error('No JSON object found in response');
+        }
+        
+        // Try to find the matching closing brace
+        let braceCount = 0;
+        let jsonEnd = -1;
+        for (let i = jsonStart; i < response.length; i++) {
+          if (response[i] === '{') {
+            braceCount++;
+          } else if (response[i] === '}') {
+            braceCount--;
+            if (braceCount === 0) {
+              jsonEnd = i;
+              break;
+            }
+          }
+        }
+        
+        // If we can't find a matching closing brace, try to work with what we have
+        if (jsonEnd === -1) {
+          // Try to parse the partial JSON we have
+          const partialResponse = response.substring(jsonStart);
+          try {
+            parsed = JSON.parse(partialResponse);
+          } catch (partialParseError) {
+            throw new Error(`No matching closing brace found for JSON object. Response appears to be truncated.`);
+          }
+        } else {
+          const jsonString = response.substring(jsonStart, jsonEnd + 1);
+          parsed = JSON.parse(jsonString);
+        }
       }
-
-      const parsed = JSON.parse(jsonMatch[0]);
 
       // Calculate word count first (needed for validation)
       const wordCount = this.calculateWordCount(parsed.bodyParagraphs || []);
@@ -157,7 +210,7 @@ Only return the JSON, no additional text.
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`Failed to parse draft response: ${errorMessage}. Raw response: ${response.substring(0, 200)}...`);
+      throw new Error(`Failed to parse draft response: ${errorMessage}. Raw response: ${response.substring(0, 1000)}...`);
     }
   }
 

@@ -1,7 +1,9 @@
 import { Route, Switch, useLocation } from 'wouter';
 import React, { useEffect, useState } from 'react';
 import WorkflowStatus from './pages/WorkflowStatus';
+import DraftApproval from './pages/DraftApproval';
 import NewArticle from './pages/NewArticle';
+import GlobalWebSocketListener from './components/GlobalWebSocketListener';
 
 interface Model {
   name: string;
@@ -354,6 +356,7 @@ function Router() {
       <Route path="/new-article" component={NewArticle} />
       <Route path="/" component={Home} />
       <Route path="/workflow/:executionId" component={WorkflowStatus} />
+      <Route path="/draft-approval/:executionId" component={DraftApproval} />
       <Route>404, Not Found! {location}</Route>
     </Switch>
   );
@@ -378,6 +381,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }> {
 function App() {
   return (
     <ErrorBoundary>
+      <GlobalWebSocketListener />
       <div className="min-h-screen bg-white dark:bg-gray-900">
         <Router />
       </div>

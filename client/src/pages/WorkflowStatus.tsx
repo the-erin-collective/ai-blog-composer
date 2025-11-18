@@ -28,6 +28,8 @@ import { useWorkflowWebSocket } from "../hooks/useWorkflowWebSocket";
 import { RadioGroup, RadioGroupItem } from "../components/ui/radio-group";
 
 export default function WorkflowStatus() {
+  console.log('WorkflowStatus component rendering');
+  
   const [location, setLocation] = useLocation();
   const { executionId } = useParams<{ executionId: string }>();
   
@@ -50,12 +52,29 @@ export default function WorkflowStatus() {
     resumeWorkflow,
   } = useWorkflowWebSocket(executionId || '');
   
+  // Log when execution changes
+  useEffect(() => {
+    console.log('Execution changed:', execution);
+  }, [execution]);
+  
   // Update editable concepts when execution data changes
   useEffect(() => {
     if (execution?.suspension?.data?.concepts) {
       setEditableConcepts([...execution.suspension.data.concepts]);
     }
   }, [execution?.suspension?.data?.concepts]);
+  
+  // Redirect to DraftApproval page when at draft approval gate
+  useEffect(() => {
+    if (execution?.status === "suspended" && 
+        execution?.suspension?.stepId === "gate-draft-approval" && 
+        execution?.suspension?.data?.draft) {
+      // Only redirect if we're not already on the draft approval page
+      if (!location.startsWith(`/draft-approval/${executionId}`)) {
+        setLocation(`/draft-approval/${executionId}`);
+      }
+    }
+  }, [execution, executionId, setLocation, location]);
   
   // Handle concept editing
   const handleConceptChange = (index: number, value: string) => {
@@ -108,6 +127,12 @@ export default function WorkflowStatus() {
 
   // Determine current status and render appropriate UI
   const renderStatusContent = () => {
+    // Add debugging
+    console.log('Execution data:', execution);
+    console.log('Suspension data:', execution?.suspension);
+    console.log('Suspension stepId:', execution?.suspension?.stepId);
+    console.log('Suspension data concepts:', execution?.suspension?.data?.concepts);
+    
     if (isLoading) {
       return (
         <div className="text-center py-8">
@@ -311,12 +336,15 @@ export default function WorkflowStatus() {
                 <div>
                   <h4 className="font-semibold mb-2">Generated Draft:</h4>
                   <div className="bg-gray-50 p-4 rounded-lg max-h-96 overflow-y-auto">
-                    <div
-                      className="prose prose-sm max-w-none"
-                      dangerouslySetInnerHTML={{
-                        __html: suspension.data.draft,
-                      }}
-                    />
+                    <h3 className="text-lg font-medium mb-2">{suspension.data.draft.title}</h3>
+                    <p className="text-sm text-gray-600 mb-4">{suspension.data.draft.metaDescription}</p>
+                    <div className="space-y-4">
+                      {suspension.data.draft.bodyParagraphs?.map((paragraph: string, index: number) => (
+                        <p key={index} className="text-sm">
+                          {paragraph}
+                        </p>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -424,7 +452,7 @@ export default function WorkflowStatus() {
         )}
 
         {/* Completed State - Final Output */}
-        {status === "completed" && execution.context?.finalOutput && (
+        {status === "completed" && execution.context?.html && (
           <Card>
             <CardHeader>
               <CardTitle className="text-xl">Final Output</CardTitle>
@@ -437,7 +465,7 @@ export default function WorkflowStatus() {
                 <div
                   className="prose prose-sm max-w-none"
                   dangerouslySetInnerHTML={{
-                    __html: execution.context.finalOutput,
+                    __html: execution.context.html,
                   }}
                 />
               </div>

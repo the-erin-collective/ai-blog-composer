@@ -211,7 +211,7 @@ export class ObserverWorkflow {
         await saveSuspensionState(
           executionId,
           'Waiting for concept approval',
-          'concepts',
+          'gate-concept-approval',
           {
             gate: 'concepts',
             concepts: conceptList,
@@ -349,7 +349,7 @@ export class ObserverWorkflow {
       }
 
       // Handle concept approval gate
-      if (suspensionState.stepId === 'concepts' && resumeData.gate === 'concepts') {
+      if (suspensionState.stepId === 'gate-concept-approval' && resumeData.gate === 'concepts') {
         console.log(`[Workflow] Processing concept approval: ${resumeData.approved ? 'APPROVED' : 'REJECTED'}`);
 
         try {

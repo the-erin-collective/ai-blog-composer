@@ -74,7 +74,9 @@ export function useWorkflowWebSocket(executionId: string) {
 
     // Subscribe to updates
     const unsubscribe = webSocketService.subscribe((data) => {
+      console.log('WebSocket message received:', data);
       if (data.type === 'stateUpdate' && data.executionId === executionId) {
+        console.log('Updating execution state with:', data.state);
         setExecution((prev: any) => ({
           ...prev,
           ...data.state,

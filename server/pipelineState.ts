@@ -1,4 +1,19 @@
 import { nanoid } from "nanoid";
+import { broadcastToClients } from "./_core/index";
+
+/**
+ * Helper function to safely parse JSON or return the value if it's already an object
+ */
+const safeJsonParse = (value: any) => {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch (e) {
+    console.error('Error parsing JSON:', e);
+    return null;
+  }
+};
 
 // In-memory store for pipeline executions
 const pipelineStore = new Map<string, any>();
@@ -100,7 +115,7 @@ export const pipelineState = {
   async createPipelineExecution(input: { competitorUrl: string; editorId: string; model?: string; provider?: 'ollama' | 'openrouter'; apiKey?: string }): Promise<PipelineExecution> {
     const now = new Date().toISOString();
     const execution: PipelineExecution = {
-      executionId: input.competitorUrl, // Using URL as ID for simplicity
+      executionId: nanoid(), // Generate unique ID for execution
       competitorUrl: input.competitorUrl,
       editorId: input.editorId,
       model: input.model, // Store model information
@@ -252,6 +267,26 @@ export const pipelineState = {
    */
   notifyStateChange(executionId: string, state: any) {
     stateChangeHandlers.forEach(handler => handler(executionId, state));
+    
+    // Broadcast state change to WebSocket clients
+    // Structure the data the same way as the API route
+    const structuredState = {
+      executionId: state.executionId,
+      status: state.status,
+      input: {
+        competitorUrl: state.competitorUrl,
+        editorId: state.editorId,
+      },
+      context: safeJsonParse(state.context),
+      suspension: safeJsonParse(state.suspension),
+      metrics: safeJsonParse(state.metrics),
+    };
+    
+    broadcastToClients({
+      type: 'stateUpdate',
+      executionId,
+      state: structuredState
+    });
   }
 };
 
@@ -411,6 +446,10 @@ export async function updatePipelineExecution(
 
   pipelineStore.set(executionId, updatedExecution);
   console.log(`[In-Memory DB] Updated execution ${executionId} with`, updates);
+  
+  // Notify subscribers of state change
+  pipelineState.notifyStateChange(executionId, updatedExecution);
+  
   return updatedExecution;
 }
 
