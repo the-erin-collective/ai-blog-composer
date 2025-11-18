@@ -38,7 +38,7 @@ function Home() {
           const response = await fetch('/api/workflow/models');
           
           if (!response.ok) {
-            throw new Error('Failed to fetch Ollama models');
+            throw new Error('Failed to fetch models from local Ollama (use OpenRouter provider for hosted models)');
           }
           
           const data = await response.json();
@@ -59,7 +59,7 @@ function Home() {
         }
       } catch (error) {
         console.error('Failed to fetch models:', error);
-        // Fallback to default model list for Ollama
+        // Fallback to default model list for local Ollama (for hosted models, use OpenRouter provider)
         if (selectedProvider === 'ollama') {
           setAvailableModels([
             { name: 'phi4-mini-reasoning', model: 'phi4-mini-reasoning' },
@@ -150,7 +150,7 @@ function Home() {
     
     try {
       console.log('Sending request to /api/workflow/start', { 
-        competitorUrl: formattedUrl,
+        inspirationUrl: formattedUrl,
         editorId: 'web-interface',
         model: selectedModel,
         provider: selectedProvider,
@@ -164,7 +164,7 @@ function Home() {
           'Accept': 'application/json'
         },
         body: JSON.stringify({ 
-          competitorUrl: formattedUrl,
+          inspirationUrl: formattedUrl,
           editorId: 'web-interface',
           model: selectedModel,
           provider: selectedProvider,

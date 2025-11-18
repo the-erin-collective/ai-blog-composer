@@ -25,7 +25,7 @@ export default function Home() {
         <div className="text-center space-y-6">
           <h1 className="text-4xl font-bold">Content Engine Demo</h1>
           <p className="text-muted-foreground text-lg">
-            Generate original, SEO-optimized articles from competitor metadata
+            Generate original, SEO-optimized articles from inspiration metadata
           </p>
           <Link href="/new-article">
             <Button size="lg" className="gap-2">

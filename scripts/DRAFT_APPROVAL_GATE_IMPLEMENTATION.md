@@ -114,7 +114,7 @@ if (!resumeData.approved) {
 
   return {
     executionId,
-    url: input.competitorUrl,
+    url: input.inspirationUrl,
     metadata: context.metadata || { title: '', metaDescription: '', headings: [] },
     concepts: { concepts: context.concepts || [], summary: '' },
     outline: context.outline,

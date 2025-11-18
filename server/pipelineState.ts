@@ -85,14 +85,14 @@ export interface PipelineContext {
 }
 
 export interface PipelineInput {
-  competitorUrl: string;
+  inspirationUrl: string;
   editorId: string;
   model?: string; // Add model information
 }
 
 export interface PipelineExecution {
   executionId: string;
-  competitorUrl: string;
+  inspirationUrl: string;
   editorId: string;
   model?: string; // Add model information
   provider?: 'ollama' | 'openrouter'; // Add provider information
@@ -112,11 +112,11 @@ export const pipelineState = {
   /**
    * Create a new pipeline execution in memory.
    */
-  async createPipelineExecution(input: { competitorUrl: string; editorId: string; model?: string; provider?: 'ollama' | 'openrouter'; apiKey?: string }): Promise<PipelineExecution> {
+  async createPipelineExecution(input: { inspirationUrl: string; editorId: string; model?: string; provider?: 'ollama' | 'openrouter'; apiKey?: string }): Promise<PipelineExecution> {
     const now = new Date().toISOString();
     const execution: PipelineExecution = {
       executionId: nanoid(), // Generate unique ID for execution
-      competitorUrl: input.competitorUrl,
+      inspirationUrl: input.inspirationUrl,
       editorId: input.editorId,
       model: input.model, // Store model information
       provider: input.provider, // Store provider information
@@ -274,7 +274,7 @@ export const pipelineState = {
       executionId: state.executionId,
       status: state.status,
       input: {
-        competitorUrl: state.competitorUrl,
+        inspirationUrl: state.inspirationUrl,
         editorId: state.editorId,
       },
       context: safeJsonParse(state.context),
@@ -292,7 +292,7 @@ export const pipelineState = {
 
 // Input data for creating a new pipeline execution
 export interface PipelineInput {
-  competitorUrl: string;
+  inspirationUrl: string;
   editorId: string;
   model?: string; // Add model information
   provider?: 'ollama' | 'openrouter'; // Add provider information
@@ -378,7 +378,7 @@ export async function createPipelineExecution(input: PipelineInput): Promise<Pip
 
   const newExecution: PipelineExecution = {
     executionId,
-    competitorUrl: input.competitorUrl,
+    inspirationUrl: input.inspirationUrl,
     editorId: input.editorId,
     model: input.model, // Store model information
     provider: input.provider, // Store provider information
@@ -392,7 +392,7 @@ export async function createPipelineExecution(input: PipelineInput): Promise<Pip
           timestamp: now,
           event: 'pipeline_created',
           stepId: 'start',
-          data: { url: input.competitorUrl }
+          data: { url: input.inspirationUrl }
         }
       ]
     },
@@ -401,7 +401,7 @@ export async function createPipelineExecution(input: PipelineInput): Promise<Pip
   };
 
   pipelineStore.set(executionId, { ...newExecution });
-  console.log(`[In-Memory DB] Created execution ${executionId} for URL: ${input.competitorUrl}`);
+  console.log(`[In-Memory DB] Created execution ${executionId} for URL: ${input.inspirationUrl}`);
   return newExecution;
 }
 

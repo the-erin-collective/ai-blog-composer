@@ -33,7 +33,7 @@ router.use(allowCors);
  * Input validation schema for starting a workflow
  */
 const startWorkflowSchema = z.object({
-  competitorUrl: z.string().url('Invalid URL format'),
+  inspirationUrl: z.string().url('Invalid URL format'),
   editorId: z.string().optional().default('web-interface'),
   model: z.string().optional().default('phi4-mini-reasoning'),
 });
@@ -76,11 +76,12 @@ router.post('/start', async (req: Request, res: Response) => {
       });
     }
 
-    const { competitorUrl, editorId, model } = validationResult.data;
+    const { inspirationUrl, editorId, model } = validationResult.data;
 
-    console.log(`[API] Starting workflow for URL: ${competitorUrl} with model: ${model}`);
+    console.log(`[API] Starting workflow for URL: ${inspirationUrl} with model: ${model}`);
 
-    // Create Ollama client with the selected model and workflow
+    // Create an LLM client with the selected model and provider (default: local Ollama).
+    // To use OpenRouter, call the OpenRouter client (see `server/agents/openRouterClient.ts`).
     const ollamaClient = createOllamaClient(model);
     const workflow = createWorkflow(ollamaClient);
 
@@ -88,7 +89,7 @@ router.post('/start', async (req: Request, res: Response) => {
     // The workflow will create a new execution in the database and return immediately
     // with the execution ID when it reaches the first suspension point
     const result = await workflow.execute({
-      url: competitorUrl,
+      url: inspirationUrl,
       editorId,
       model, // Pass the model to the workflow context
     });

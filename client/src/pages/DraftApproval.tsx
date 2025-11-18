@@ -160,7 +160,7 @@ export default function DraftApproval() {
               <div className="text-right">
                 <p className="text-sm text-gray-600">Source URL:</p>
                 <p className="text-sm">
-                  {execution.input?.competitorUrl || "Unknown URL"}
+                  {execution.input?.inspirationUrl || "Unknown URL"}
                 </p>
               </div>
             </div>

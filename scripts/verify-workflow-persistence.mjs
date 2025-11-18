@@ -26,7 +26,7 @@ async function verifyPersistence() {
     // Test 1: Create a pipeline execution
     console.log('Test 1: Creating pipeline execution...');
     const execution = await createPipelineExecution({
-      competitorUrl: 'https://example.com',
+      inspirationUrl: 'https://example.com',
       editorId: 'test-editor',
     });
 

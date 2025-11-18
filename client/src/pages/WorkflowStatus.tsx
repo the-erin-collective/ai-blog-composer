@@ -234,7 +234,7 @@ export default function WorkflowStatus() {
               <div className="text-right">
                 <p className="text-sm text-gray-600">Started:</p>
                 <p className="text-sm">
-                  {execution.input?.competitorUrl || "Unknown URL"}
+                  {execution.input?.inspirationUrl || "Unknown URL"}
                 </p>
               </div>
             </div>

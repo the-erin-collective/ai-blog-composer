@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Content Engine Demo is a TypeScript-based implementation of a hub-and-spoke agentic system for generating original article content from competitor metadata. The system uses VoltAgent as the orchestration framework, integrating specialized agents for metadata processing, content generation, and quality assurance. The architecture emphasizes IP compliance through metadata-only extraction, human-in-the-loop control through workflow suspension gates, and measurable quality through automated scoring.
+The Content Engine Demo is a TypeScript-based implementation of a hub-and-spoke agentic system for generating original article content from inspiration metadata. The system uses VoltAgent as the orchestration framework, integrating specialized agents for metadata processing, content generation, and quality assurance. The architecture emphasizes IP compliance through metadata-only extraction, human-in-the-loop control through workflow suspension gates, and measurable quality through automated scoring.
 
 The demo consists of three main components:
 1. **Backend Service**: VoltAgent-based workflow orchestration with specialized spoke agents
@@ -98,7 +98,7 @@ graph TB
 The Observer Agent is the central hub that manages pipeline state and routes execution through specialized spokes.
 
 **Responsibilities:**
-- Initialize pipeline state from competitor URL input
+- Initialize pipeline state from inspiration URL input
 - Route execution through spoke agents in correct sequence
 - Suspend workflow at human gates and wait for resume signals
 - Implement iterative refinement loop for quality/originality checks
@@ -111,7 +111,7 @@ The Observer Agent is the central hub that manages pipeline state and routes exe
 const contentPipeline = new Workflow({
   id: 'content-pipeline',
   inputSchema: z.object({
-    competitorUrl: z.string().url(),
+    inspirationUrl: z.string().url(),
     editorId: z.string(),
   }),
   outputSchema: z.object({
@@ -129,10 +129,10 @@ const contentPipeline = new Workflow({
 
 ### 2. Metadata Extractor (Deterministic Spoke)
 
-Extracts safe, publicly visible metadata from competitor URLs without processing body content.
+Extracts safe, publicly visible metadata from inspiration URLs without processing body content.
 
 **Responsibilities:**
-- Fetch HTML content from competitor URL
+- Fetch HTML content from inspiration URL
 - Parse and extract title, meta description, h1-h3 headings
 - Exclude all body paragraphs and expressive content
 - Cache results to avoid redundant fetches
@@ -190,7 +190,7 @@ interface SummarizerOutput {
 
 **Prompt Template:**
 ```
-You are an expert editor. Given competitor metadata, extract 5-7 key high-level 
+You are an expert editor. Given inspiration metadata, extract 5-7 key high-level 
 concepts/themes discussed. Focus on WHAT topics are covered, not HOW they are expressed.
 
 Metadata: {metadata}
@@ -335,17 +335,17 @@ interface ReviewerOutput {
 
 ### 8. Similarity Monitor (Vector Comparison Spoke)
 
-Measures originality against competitor metadata using embeddings.
+Measures originality against inspiration metadata using embeddings.
 
 **Responsibilities:**
 - Generate embeddings for draft content
-- Retrieve competitor metadata embeddings from vector store
+- Retrieve inspiration metadata embeddings from vector store
 - Calculate cosine distance for distinctiveness score
 - Ensure score meets originality threshold
 
 **Implementation Approach:**
 - Use OpenAI embeddings API (text-embedding-3-small)
-- Store competitor embeddings in vector database
+- Store inspiration embeddings in vector database
 - Calculate cosine distance: `1 - cosine_similarity`
 - Cache embeddings for performance
 
@@ -353,7 +353,7 @@ Measures originality against competitor metadata using embeddings.
 ```typescript
 interface SimilarityInput {
   draft: DraftOutput;
-  competitorMetadata: MetadataExtractorOutput;
+  inspirationMetadata: MetadataExtractorOutput;
 }
 
 interface SimilarityOutput {
@@ -493,7 +493,7 @@ VoltAgent server exposes HTTP endpoints for workflow management.
 
 1. **Start Pipeline**
    - `POST /workflows/content-pipeline/execute`
-   - Body: `{ input: { competitorUrl: string, editorId: string } }`
+   - Body: `{ input: { inspirationUrl: string, editorId: string } }`
    - Response: `{ success: boolean, data: { executionId: string, status: string } }`
 
 2. **Get Pipeline State**
@@ -517,7 +517,7 @@ Next.js application providing web interface for pipeline management.
 **Pages:**
 
 1. **New Article Page** (`/new-article`)
-   - Form to submit competitor URL
+   - Form to submit inspiration URL
    - Start pipeline button
    - Display execution ID on success
 
@@ -556,7 +556,7 @@ interface PipelineExecution {
   workflowId: string;
   status: 'running' | 'suspended' | 'completed' | 'rejected' | 'failed';
   input: {
-    competitorUrl: string;
+    inspirationUrl: string;
     editorId: string;
   };
   context: {
@@ -599,7 +599,7 @@ interface PipelineExecution {
 ```typescript
 interface EmbeddingRecord {
   id: string;
-  competitorUrl: string;
+  inspirationUrl: string;
   contentType: 'metadata' | 'draft';
   embedding: number[]; // 1536-dimensional vector
   metadata: {
@@ -779,7 +779,7 @@ interface ErrorResponse {
 ### Data Protection
 
 - HTTPS for all API communication
-- Sanitize competitor URLs to prevent SSRF attacks
+- Sanitize inspiration URLs to prevent SSRF attacks
 - Validate and escape all user inputs
 - Secure storage of API keys in environment variables
 
@@ -830,7 +830,7 @@ NEXT_PUBLIC_API_KEY=...
 
 1. **Caching:**
    - Cache metadata extraction results (24-hour TTL)
-   - Cache embeddings for competitor URLs
+   - Cache embeddings for inspiration URLs
    - Cache LLM responses for identical inputs (optional)
 
 2. **Parallel Processing:**
@@ -862,7 +862,7 @@ NEXT_PUBLIC_API_KEY=...
 
 1. **Multi-Language Support:** Generate content in multiple languages
 2. **Custom Style Guides:** Allow editors to define brand-specific tone and style
-3. **Batch Processing:** Process multiple competitor URLs in parallel
+3. **Batch Processing:** Process multiple inspiration URLs in parallel
 4. **A/B Testing:** Generate multiple draft variations for comparison
 5. **SEO Optimization:** Advanced keyword research and optimization
 6. **Content Scheduling:** Schedule publication times

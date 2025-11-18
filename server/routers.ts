@@ -96,7 +96,8 @@ export const appRouter = router({
           const isHealthy = await ollamaClient.checkHealth();
           return {
             status: isHealthy ? 'healthy' : 'unhealthy',
-            message: isHealthy ? 'Ollama is running and model is available' : 'Ollama is not responding or model is not loaded'
+            // Provider-agnostic message: mention both supported providers
+            message: isHealthy ? 'LLM provider is running and model is available (Ollama or OpenRouter)' : 'LLM provider is not responding or model is not loaded (Ollama or OpenRouter)'
           };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';

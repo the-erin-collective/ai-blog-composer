@@ -31,7 +31,7 @@ Created REST API endpoints for workflow management at `/api/workflow/*`:
 **Request Body**:
 ```json
 {
-  "competitorUrl": "https://example.com/article",
+  "inspirationUrl": "https://example.com/article",
   "editorId": "editor-123" // optional, defaults to "default-editor"
 }
 ```
@@ -72,7 +72,7 @@ Created REST API endpoints for workflow management at `/api/workflow/*`:
 ```
 
 **Behavior**:
-1. Validates input (competitorUrl must be valid URL)
+1. Validates input (inspirationUrl must be valid URL)
 2. Creates new execution in database
 3. Starts workflow asynchronously
 4. Returns execution ID immediately
@@ -90,7 +90,7 @@ Created REST API endpoints for workflow management at `/api/workflow/*`:
     "executionId": "abc123xyz",
     "status": "suspended",
     "input": {
-      "competitorUrl": "https://example.com/article",
+      "inspirationUrl": "https://example.com/article",
       "editorId": "editor-123"
     },
     "context": {
@@ -163,7 +163,7 @@ Created REST API endpoints for workflow management at `/api/workflow/*`:
 
 ✅ **Requirement 10.1**: POST endpoint to start new pipeline executions
 - Endpoint: `POST /api/workflow/start`
-- Validates input (competitorUrl)
+- Validates input (inspirationUrl)
 - Creates new execution in database
 - Returns execution ID
 

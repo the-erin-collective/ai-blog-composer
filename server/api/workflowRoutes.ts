@@ -33,7 +33,7 @@ router.use(allowCors);
 /**
  * GET /api/workflow/models
  * 
- * Get available Ollama models
+ * Get available local Ollama models (for local Ollama deployments)
  */
 router.get('/models', async (req: Request, res: Response) => {
   try {
@@ -48,7 +48,7 @@ router.get('/models', async (req: Request, res: Response) => {
         success: false,
         error: {
           code: 'OLLAMA_UNAVAILABLE',
-          message: 'Ollama service is not available',
+          message: 'Local Ollama service is not available',
         },
       });
     }
@@ -67,7 +67,7 @@ router.get('/models', async (req: Request, res: Response) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
-    console.error('[API] Failed to get Ollama models:', {
+    console.error('[API] Failed to get local Ollama models:', {
       error: errorMessage,
       stack: error instanceof Error ? error.stack : undefined,
     });
@@ -147,7 +147,7 @@ router.post('/openrouter-models', async (req: Request, res: Response) => {
  * Input validation schema for starting a workflow
  */
 const startWorkflowSchema = z.object({
-  competitorUrl: z.string().url('Invalid URL format'),
+  inspirationUrl: z.string().url('Invalid URL format'),
   editorId: z.string().optional().default('web-interface'),
   model: z.string().optional().default('phi4-mini-reasoning'),
   provider: z.enum(['ollama', 'openrouter']).optional().default('ollama'),
@@ -192,9 +192,9 @@ router.post('/start', async (req: Request, res: Response) => {
       });
     }
 
-    const { competitorUrl, editorId, model, provider, apiKey } = validationResult.data;
+    const { inspirationUrl, editorId, model, provider, apiKey } = validationResult.data;
 
-    console.log(`[API] Starting workflow for URL: ${competitorUrl} with model: ${model} and provider: ${provider}`);
+    console.log(`[API] Starting workflow for URL: ${inspirationUrl} with model: ${model} and provider: ${provider}`);
 
     // Create appropriate client based on provider
     let ollamaClient;
@@ -212,7 +212,7 @@ router.post('/start', async (req: Request, res: Response) => {
     // The workflow will create a new execution in the database and return immediately
     // with the execution ID when it reaches the first suspension point
     const result = await workflow.execute({
-      url: competitorUrl,
+      url: inspirationUrl,
       editorId,
       model,
       provider,
@@ -293,7 +293,7 @@ router.get('/executions/:executionId', async (req: Request, res: Response) => {
       executionId: execution.executionId,
       status: execution.status,
       input: {
-        competitorUrl: execution.competitorUrl,
+        inspirationUrl: execution.inspirationUrl,
         editorId: execution.editorId,
       },
       context: safeJsonParse(execution.context),

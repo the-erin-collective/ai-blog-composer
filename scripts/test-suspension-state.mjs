@@ -20,7 +20,7 @@ async function testSuspensionState() {
     // Step 1: Create a new pipeline execution
     console.log("1️⃣  Creating new pipeline execution...");
     const execution = await createPipelineExecution({
-      competitorUrl: "https://example.com/article",
+      inspirationUrl: "https://example.com/article",
       editorId: "editor-123",
     });
     console.log(`✅ Created execution: ${execution.executionId}`);

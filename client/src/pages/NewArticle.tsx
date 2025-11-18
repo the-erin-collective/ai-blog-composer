@@ -128,7 +128,7 @@ export default function NewArticle() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          competitorUrl: url,
+          inspirationUrl: url,
           editorId: 'web-interface',
           model: selectedModel,
           provider: selectedProvider,
@@ -216,13 +216,13 @@ export default function NewArticle() {
         <CardHeader>
           <CardTitle className="text-2xl">Create New Article</CardTitle>
           <CardDescription>
-            Enter a competitor URL to start the content generation pipeline
+            Enter an inspiration URL to start the content generation pipeline
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="url">Competitor URL</Label>
+              <Label htmlFor="url">Inspiration URL</Label>
               <Input
                 id="url"
                 type="text"

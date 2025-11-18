@@ -24,7 +24,7 @@ async function testStartWorkflow() {
   
   try {
     const response = await axios.post(`${API_BASE_URL}/api/workflow/start`, {
-      competitorUrl: 'https://example.com/article',
+      inspirationUrl: 'https://example.com/article',
       editorId: 'test-editor',
     });
 
@@ -56,7 +56,7 @@ async function testInvalidUrl() {
   
   try {
     const response = await axios.post(`${API_BASE_URL}/api/workflow/start`, {
-      competitorUrl: 'not-a-valid-url',
+      inspirationUrl: 'not-a-valid-url',
       editorId: 'test-editor',
     });
 

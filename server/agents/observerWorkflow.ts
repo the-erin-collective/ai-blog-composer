@@ -77,7 +77,7 @@ export class ObserverWorkflow {
     try {
       // Create pipeline execution in database
       const pipelineInput: PipelineInput = {
-        competitorUrl: input.url,
+        inspirationUrl: input.url,
         editorId: input.editorId || 'default-editor',
         model: input.model,
         provider: input.provider,
@@ -333,9 +333,9 @@ export class ObserverWorkflow {
           (typeof execution.context === 'string' ? JSON.parse(execution.context) : execution.context) : 
           {};
           
-        // Use competitorUrl and editorId from execution
+        // Use inspirationUrl and editorId from execution
         input = {
-          competitorUrl: execution.competitorUrl,
+          inspirationUrl: execution.inspirationUrl,
           editorId: execution.editorId
         };
       } catch (error) {
@@ -396,7 +396,7 @@ export class ObserverWorkflow {
 
           return {
             executionId,
-            url: input.competitorUrl,
+            url: input.inspirationUrl,
             metadata: context.metadata || { title: '', metaDescription: '', headings: [] },
             concepts: { concepts: context.concepts || [], summary: '' },
             status: 'error',
@@ -519,7 +519,7 @@ export class ObserverWorkflow {
         // Return suspended status - workflow will be resumed via resume() method
         return {
           executionId,
-          url: input.competitorUrl,
+          url: input.inspirationUrl,
           metadata: context.metadata || { title: '', metaDescription: '', headings: [] },
           concepts: { concepts: context.concepts || [], summary: '' },
           outline,
@@ -577,7 +577,7 @@ export class ObserverWorkflow {
 
           return {
             executionId,
-            url: input.competitorUrl,
+            url: input.inspirationUrl,
             metadata: context.metadata || { title: '', metaDescription: '', headings: [] },
             concepts: { concepts: context.concepts || [], summary: '' },
             outline: context.outline,
@@ -647,7 +647,7 @@ export class ObserverWorkflow {
 
         return {
           executionId,
-          url: input.competitorUrl,
+          url: input.inspirationUrl,
           metadata: context.metadata || { title: '', metaDescription: '', headings: [] },
           concepts: { concepts: context.concepts || [], summary: '' },
           outline: context.outline,
@@ -694,7 +694,7 @@ export class ObserverWorkflow {
 
       return {
         executionId,
-        url: input?.competitorUrl || 'unknown',
+        url: input?.inspirationUrl || 'unknown',
         metadata: { title: '', metaDescription: '', headings: [] },
         concepts: { concepts: [], summary: '' },
         status: 'error',

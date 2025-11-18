@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This document defines the requirements for a code demonstration of the Observer-Orchestrated Content Engine, a hub-and-spoke agentic system that generates original, SEO-optimized article drafts from competitor metadata. The demo will showcase the core workflow including metadata extraction, LLM-powered content generation, human-in-the-loop approval gates, and quality assurance mechanisms. The system emphasizes IP compliance, editorial control, and measurable quality metrics.
+This document defines the requirements for a code demonstration of the Observer-Orchestrated Content Engine, a hub-and-spoke agentic system that generates original, SEO-optimized article drafts from inspiration metadata. The demo will showcase the core workflow including metadata extraction, LLM-powered content generation, human-in-the-loop approval gates, and quality assurance mechanisms. The system emphasizes IP compliance, editorial control, and measurable quality metrics.
 
 ## Glossary
 
@@ -10,20 +10,20 @@ This document defines the requirements for a code demonstration of the Observer-
 - **Spoke Agent**: A specialized agent or tool that performs a specific task in the content generation pipeline
 - **Human Gate**: A suspension point in the workflow where human approval is required before proceeding
 - **Pipeline State**: The current execution status and data of a content generation workflow
-- **Metadata**: Publicly visible HTML elements (title, headings, meta tags) extracted from competitor content, excluding body content
-- **Distinctiveness Score**: A cosine distance metric (0-1 scale) measuring originality against competitor metadata
+- **Metadata**: Publicly visible HTML elements (title, headings, meta tags) extracted from inspiration content, excluding body content
+- **Distinctiveness Score**: A cosine distance metric (0-1 scale) measuring originality against inspiration metadata
 - **VoltAgent**: The TypeScript-first agent framework used for workflow orchestration and execution
-- **Content Pipeline**: The complete workflow from competitor URL input to published article output
+- **Content Pipeline**: The complete workflow from inspiration URL input to published article output
 
 ## Requirements
 
 ### Requirement 1
 
-**User Story:** As an editor, I want to initiate a content generation pipeline by providing a competitor URL, so that the system can begin creating an original article based on competitor topics.
+**User Story:** As an editor, I want to initiate a content generation pipeline by providing an inspiration URL, so that the system can begin creating an original article based on inspiration topics.
 
 #### Acceptance Criteria
 
-1. WHEN the editor submits a competitor URL, THE Content Pipeline SHALL initialize a new pipeline execution with a unique execution ID
+1. WHEN the editor submits an inspiration URL, THE Content Pipeline SHALL initialize a new pipeline execution with a unique execution ID
 2. THE Content Pipeline SHALL validate that the provided URL is accessible and returns valid HTML content
 3. WHEN initialization succeeds, THE Content Pipeline SHALL store the pipeline state with status "INITIALIZED"
 4. THE Content Pipeline SHALL return the execution ID to the editor within 2 seconds of submission
@@ -31,11 +31,11 @@ This document defines the requirements for a code demonstration of the Observer-
 
 ### Requirement 2
 
-**User Story:** As the system, I want to extract only safe metadata from competitor pages, so that I maintain IP compliance by avoiding expressive body content.
+**User Story:** As the system, I want to extract only safe metadata from inspiration pages, so that I maintain IP compliance by avoiding expressive body content.
 
 #### Acceptance Criteria
 
-1. WHEN the Metadata Extractor receives a competitor URL, THE Metadata Extractor SHALL retrieve only HTML title, meta description, and heading tags (h1-h3)
+1. WHEN the Metadata Extractor receives an inspiration URL, THE Metadata Extractor SHALL retrieve only HTML title, meta description, and heading tags (h1-h3)
 2. THE Metadata Extractor SHALL exclude all body paragraph content, article text, and expressive content from extraction
 3. THE Metadata Extractor SHALL parse the HTML using deterministic parsing tools without LLM processing
 4. WHEN extraction completes, THE Metadata Extractor SHALL return structured metadata as a JSON object
@@ -43,7 +43,7 @@ This document defines the requirements for a code demonstration of the Observer-
 
 ### Requirement 3
 
-**User Story:** As the system, I want to abstract competitor metadata into key concepts, so that I create a legal abstraction layer that informs topic selection without copying expression.
+**User Story:** As the system, I want to abstract inspiration metadata into key concepts, so that I create a legal abstraction layer that informs topic selection without copying expression.
 
 #### Acceptance Criteria
 
@@ -86,7 +86,7 @@ This document defines the requirements for a code demonstration of the Observer-
 1. WHEN the Draft Generator receives the outline, THE Draft Generator SHALL produce a complete article with introduction, body paragraphs, and conclusion
 2. THE Draft Generator SHALL use a high-fidelity generation LLM model optimized for long-form content
 3. THE Draft Generator SHALL maintain consistent tone and style throughout the article
-4. THE Draft Generator SHALL generate content that is structurally and conceptually distinct from the competitor source
+4. THE Draft Generator SHALL generate content that is structurally and conceptually distinct from the inspiration source
 5. WHEN draft generation completes, THE Content Pipeline SHALL route the draft to the Reviewer Agent
 
 ### Requirement 7
@@ -97,7 +97,7 @@ This document defines the requirements for a code demonstration of the Observer-
 
 1. WHEN the Reviewer Agent receives a draft, THE Reviewer Agent SHALL generate a quality score from 0 to 100
 2. THE Reviewer Agent SHALL provide structured critique in JSON format including score and comments
-3. WHEN the Similarity Monitor receives a draft, THE Similarity Monitor SHALL compute a distinctiveness score against competitor metadata embeddings
+3. WHEN the Similarity Monitor receives a draft, THE Similarity Monitor SHALL compute a distinctiveness score against inspiration metadata embeddings
 4. THE Similarity Monitor SHALL use cosine distance calculation to measure originality on a 0-1 scale
 5. IF the quality score is below 80 OR the distinctiveness score is below 0.7, THEN THE Observer Agent SHALL route the draft back to the Draft Generator for revision
 
@@ -143,7 +143,7 @@ This document defines the requirements for a code demonstration of the Observer-
 
 #### Acceptance Criteria
 
-1. THE Frontend Application SHALL provide a form to submit competitor URLs and start new pipelines
+1. THE Frontend Application SHALL provide a form to submit inspiration URLs and start new pipelines
 2. THE Frontend Application SHALL display the current pipeline status including execution ID and workflow state
 3. WHEN a pipeline is suspended at concept approval, THE Frontend Application SHALL display extracted concepts with approve/reject options
 4. WHEN a pipeline is suspended at draft approval, THE Frontend Application SHALL display the draft content, quality score, and distinctiveness score with approve/reject options

@@ -17,7 +17,7 @@ async function testPipelineState() {
     // Test 1: Create a new pipeline execution
     console.log('Test 1: Creating new pipeline execution...');
     const input = {
-      competitorUrl: 'https://example.com/competitor-article',
+      inspirationUrl: 'https://example.com/inspiration-article',
       editorId: 'editor-123',
     };
 
@@ -162,7 +162,7 @@ async function testPipelineState() {
     // Test 8: Test rejection flow
     console.log('Test 8: Testing rejection flow...');
     const rejectedExecution = await createPipelineExecution({
-      competitorUrl: 'https://example.com/another-article',
+      inspirationUrl: 'https://example.com/another-article',
       editorId: 'editor-456',
     });
     
