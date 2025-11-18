@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-/**
- * CLI Script to Test Ollama Workflow
- * Usage: node scripts/test-workflow.mjs <url> [ollama_model]
+/*
+ * CLI Script to Test LLM Workflow (local Ollama or OpenRouter)
+ * Usage: node scripts/test-workflow.mjs <url> [model]
  * Example: node scripts/test-workflow.mjs https://example.com llama2
  */
 
@@ -24,10 +24,10 @@ if (args.length === 0) {
 const testUrl = args[0];
 const model = args[1] || DEFAULT_MODEL;
 
-console.log('🚀 Starting Ollama Workflow Test');
+console.log('🚀 Starting LLM Workflow Test (Ollama local or OpenRouter hosted)');
 console.log(`📍 Target URL: ${testUrl}`);
-console.log(`🤖 Ollama Model: ${model}`);
-console.log(`🌐 Ollama Base URL: ${OLLAMA_BASE_URL}`);
+console.log(`🤖 Model: ${model} (provider-specific)`);
+console.log(`🌐 Ollama Base URL (if using local Ollama): ${OLLAMA_BASE_URL}`);
 console.log('');
 
 // Step 1: Extract Metadata
@@ -72,7 +72,7 @@ async function extractMetadata(url) {
 
 // Step 2: Check Ollama Health
 async function checkOllamaHealth() {
-  console.log('🏥 Step 2: Checking Ollama Health...');
+  console.log('🏥 Step 2: Checking LLM provider health (local Ollama)...');
   try {
     const response = await axios.get(`${OLLAMA_BASE_URL}/api/tags`, {
       timeout: 5000
@@ -82,18 +82,18 @@ async function checkOllamaHealth() {
     const modelExists = models.some(m => m.name === model);
 
     if (modelExists) {
-      console.log(`✅ Ollama is running and model "${model}" is available`);
+      console.log(`✅ Local Ollama is running and model "${model}" is available`);
       console.log('');
       return true;
     } else {
-      console.warn(`⚠️  Ollama is running but model "${model}" is not loaded`);
+      console.warn(`⚠️  Local Ollama is running but model "${model}" is not loaded`);
       console.warn(`Available models: ${models.map(m => m.name).join(', ')}`);
       console.log('');
       return false;
     }
   } catch (error) {
-    console.error(`❌ Ollama health check failed: ${error.message}`);
-    console.error('Make sure Ollama is running at ' + OLLAMA_BASE_URL);
+    console.error(`❌ Local Ollama health check failed: ${error.message}`);
+    console.error('Make sure local Ollama is running at ' + OLLAMA_BASE_URL + ' or configure OpenRouter for hosted models');
     process.exit(1);
   }
 }

@@ -28,6 +28,8 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         try {
+          // Use local Ollama client by default here. The application also supports OpenRouter
+          // via the API routes that accept a `provider` parameter and `apiKey`.
           const ollamaClient = createOllamaClient('llama2');
           const workflow = createWorkflow(ollamaClient);
           const result = await workflow.execute({ 
@@ -80,6 +82,8 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         try {
+          // Use local Ollama client by default here. For OpenRouter, see the workflow API
+          // which can create an OpenRouter client when `provider: 'openrouter'` is provided.
           const ollamaClient = createOllamaClient('llama2');
           const workflow = createWorkflow(ollamaClient);
           const result = await workflow.resume(input.executionId, input.resumeData);
@@ -92,6 +96,8 @@ export const appRouter = router({
     health: publicProcedure
       .query(async () => {
         try {
+          // Health check uses the local Ollama client by default. The repo also includes
+          // an OpenRouter client implementation for hosted providers.
           const ollamaClient = createOllamaClient('llama2');
           const isHealthy = await ollamaClient.checkHealth();
           return {

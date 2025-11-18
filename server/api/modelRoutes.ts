@@ -3,7 +3,7 @@ import axios from 'axios';
 
 export const router = express.Router();
 
-// Get available Ollama models
+// Get available local Ollama models (for local Ollama deployments)
 router.get('/models', async (req, res) => {
   try {
     const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';

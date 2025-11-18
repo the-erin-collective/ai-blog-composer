@@ -34,7 +34,7 @@ function Home() {
         setIsModelsLoading(true);
         
         if (selectedProvider === 'ollama') {
-          // Fetch Ollama models
+          // Fetch models from local Ollama (for hosted models, use OpenRouter provider)
           const response = await fetch('/api/workflow/models');
           
           if (!response.ok) {

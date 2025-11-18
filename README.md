@@ -1,13 +1,13 @@
 # AI Blog Composer - Setup & Usage Guide
 
-This MVP prototype demonstrates a **lightweight proof of concept** for validating integration with a **local Ollama LLM provider**. It implements a simple linear workflow that extracts metadata from a URL and uses Ollama to generate high-level concepts.
+This MVP demonstrates a **lightweight proof of concept** for integrating with LLM providers (local Ollama or hosted OpenRouter). It implements a simple linear workflow that extracts metadata from a URL and uses an LLM to generate high-level concepts.
 
 ## Architecture Overview
 
 The MVP implements a minimal, linear workflow:
 
 ```
-Start → Metadata Extractor → Metadata Summarizer (Ollama) → End
+Start → Metadata Extractor → Metadata Summarizer (LLM) → End
 ```
 
 ### Components
@@ -17,13 +17,13 @@ Start → Metadata Extractor → Metadata Summarizer (Ollama) → End
    - Uses `cheerio` for HTML parsing
    - No LLM involvement
 
-2. **Ollama Client** (`server/agents/ollamaClient.ts`)
-   - Manages connection to local Ollama instance
-   - Supports OpenAI-compatible API format
-   - Default endpoint: `http://localhost:11434`
+2. **LLM Clients** (`server/agents/ollamaClient.ts`, `server/agents/openRouterClient.ts`)
+  - Manages connections to supported LLM providers (local Ollama or hosted OpenRouter)
+  - Uses OpenAI-compatible API formats where applicable
+  - Local Ollama default endpoint: `http://localhost:11434`
 
 3. **Metadata Summarizer** (`server/agents/metadataSummarizer.ts`)
-   - LLM-powered agent using Ollama
+  - LLM-powered agent using the configured provider (Ollama or OpenRouter)
    - Generates 5-7 high-level concepts from extracted metadata
    - Parses structured JSON responses
 
@@ -34,7 +34,11 @@ Start → Metadata Extractor → Metadata Summarizer (Ollama) → End
 
 ## Prerequisites
 
-### 1. Install Ollama
+### 1. Install an LLM provider
+
+This project supports multiple LLM providers. Two common options are listed below — pick the one that fits your needs.
+
+Ollama (local)
 
 Download and install Ollama from [ollama.ai](https://ollama.ai):
 
@@ -49,9 +53,7 @@ curl https://ollama.ai/install.sh | sh
 # Download from https://ollama.ai/download
 ```
 
-### 2. Pull a Model
-
-Pull a lightweight model (recommended: `llama2` or `mistral`):
+Pull a local model (example):
 
 ```bash
 ollama pull llama2
@@ -59,13 +61,22 @@ ollama pull llama2
 ollama pull mistral
 ```
 
-### 3. Start Ollama Server
+Start the local Ollama server:
 
 ```bash
 ollama serve
 ```
 
-The server will start on `http://localhost:11434` by default.
+Default local endpoint: `http://localhost:11434`.
+
+OpenRouter (hosted)
+
+OpenRouter is a hosted API that allows you to call models over HTTP. To use it:
+
+1. Sign up at OpenRouter and create an API key.
+2. Configure the API key in your server environment (for example, in `.env`).
+
+OpenRouter does not require pulling models locally — models are invoked via the API.
 
 ## Setup Instructions
 
@@ -78,10 +89,14 @@ pnpm install
 
 ### 2. Configure Environment (Optional)
 
-Set custom Ollama endpoint if not using default:
+Set custom provider configuration. Examples:
 
 ```bash
+# For local Ollama
 export OLLAMA_BASE_URL=http://localhost:11434
+
+# For OpenRouter (hosted)
+export OPENROUTER_API_KEY=your_api_key_here
 ```
 
 ### 3. Start Development Server
@@ -112,7 +127,7 @@ node scripts/test-workflow.mjs https://example.com llama2
 
 **Arguments:**
 - `<url>` (required): The URL to analyze
-- `[ollama_model]` (optional): The Ollama model to use (default: `llama2`)
+- `[model]` (optional): The model to use (provider-specific, default: `llama2` for local Ollama)
 
 **Example:**
 
@@ -163,7 +178,7 @@ Execute the complete workflow for a given URL.
 
 ### `workflow.health`
 
-Check if Ollama is running and the model is available.
+Check the configured LLM provider is reachable and the model is available.
 
 **Output:**
 ```typescript
@@ -175,33 +190,35 @@ Check if Ollama is running and the model is available.
 
 ## Troubleshooting
 
-### "Ollama is not responding"
+### "LLM provider is not responding"
 
-1. Verify Ollama is running:
-   ```bash
-   curl http://localhost:11434/api/tags
-   ```
+1. If using local Ollama: verify the server is running and the model is loaded:
+  ```bash
+  curl http://localhost:11434/api/tags
+  ```
 
-2. Check the Ollama server logs for errors
+2. If using OpenRouter: verify your API key and that the OpenRouter service is reachable. Example (replace `API_KEY`):
+  ```bash
+  curl -H "Authorization: Bearer API_KEY" https://openrouter.ai/api/v1/models
+  ```
 
-3. Ensure the correct base URL is set:
-   ```bash
-   export OLLAMA_BASE_URL=http://localhost:11434
-   ```
+3. Check the server or service logs for errors and ensure relevant env vars are set (e.g., `OLLAMA_BASE_URL` or `OPENROUTER_API_KEY`).
 
 ### "Model is not loaded"
 
-Pull the required model:
+If running a local Ollama instance, pull the required model:
 
 ```bash
 ollama pull llama2
 ```
 
-List available models:
+List available local models:
 
 ```bash
 ollama list
 ```
+
+For hosted providers (OpenRouter), select an available model via the API — you do not need to pull models locally.
 
 ### "Timeout waiting for LLM response"
 
@@ -215,7 +232,7 @@ The LLM may not be returning properly formatted JSON. Try:
 
 1. Using a different model
 2. Adjusting the prompt in `server/agents/metadataSummarizer.ts`
-3. Checking Ollama logs for errors
+3. Checking the configured provider's logs for errors
 
 ## File Structure
 
@@ -223,7 +240,8 @@ The LLM may not be returning properly formatted JSON. Try:
 server/
   agents/
     metadataExtractor.ts      # URL metadata extraction
-    ollamaClient.ts           # Ollama connection & API
+    ollamaClient.ts           # Local Ollama connection & API
+    openRouterClient.ts       # OpenRouter hosted API client
     metadataSummarizer.ts     # LLM-powered concept extraction
     observerWorkflow.ts       # Main workflow orchestration
   routers.ts                  # tRPC API endpoints
@@ -236,8 +254,8 @@ README.md                     # This file
 
 The MVP is considered successful when:
 
-- ✅ The project initializes and runs without external API keys
-- ✅ The Metadata Summarizer connects to and receives responses from local Ollama
+- ✅ The project initializes and runs (with or without provider API keys, depending on configuration)
+- ✅ The Metadata Summarizer connects to and receives responses from a configured LLM provider (local Ollama or OpenRouter)
 - ✅ The end-to-end workflow executes linearly and terminates successfully
 - ✅ Concepts are generated and returned in structured format
 
@@ -255,7 +273,8 @@ After validating the MVP, you can:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Base URL for Ollama API |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Base URL for local Ollama (if used) |
+| `OPENROUTER_API_KEY` | | API key for OpenRouter (hosted) |
 | `NODE_ENV` | `development` | Node environment |
 
 ## Performance Notes

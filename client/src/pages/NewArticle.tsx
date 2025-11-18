@@ -33,11 +33,11 @@ export default function NewArticle() {
         setIsModelsLoading(true);
         
         if (selectedProvider === 'ollama') {
-          // Fetch Ollama models
+          // Fetch models from local Ollama (for hosted models, use the OpenRouter provider)
           const response = await fetch('/api/workflow/models');
           
           if (!response.ok) {
-            throw new Error('Failed to fetch Ollama models');
+            throw new Error('Failed to fetch models from local Ollama (try the OpenRouter provider for hosted models)');
           }
           
           const data = await response.json();
@@ -58,7 +58,7 @@ export default function NewArticle() {
         }
       } catch (error) {
         console.error('Failed to fetch models:', error);
-        // Fallback to default model list for Ollama
+        // Fallback to default model list for local Ollama
         if (selectedProvider === 'ollama') {
           setModels(['phi4-mini-reasoning', 'gemma3:270m', 'llama2', 'mistral']);
           setSelectedModel('phi4-mini-reasoning');
